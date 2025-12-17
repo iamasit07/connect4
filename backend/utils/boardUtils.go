@@ -16,10 +16,10 @@ func CopyBoard(board [][]models.Player) [][]models.Player {
 }
 
 // this is a helper function that will later be used by the bot
-func GetValidMoves(game *Game) []int {
+func GetValidMoves(g *game.Game) []int {
 	validMoves := []int{}
 	for col := 0; col < models.Columns; col++ {
-		if IsValidMove(game.Board, col) {
+		if game.IsValidMove(g.Board, col) {
 			validMoves = append(validMoves, col)
 		}
 	}
