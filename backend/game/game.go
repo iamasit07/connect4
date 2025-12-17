@@ -63,14 +63,3 @@ func MakeMove(game *Game, column int) error {
 	
 	return nil
 }
-
-// this is a helper function that will later be used by the bot
-func GetValidMoves(game *Game) []int {
-	validMoves := []int{}
-	for col := 0; col < models.Columns; col++ {
-		if IsValidMove(game.Board, col) {
-			validMoves = append(validMoves, col)
-		}
-	}
-	return validMoves
-}
