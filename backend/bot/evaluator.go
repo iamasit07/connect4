@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"math"
+
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/utils"
 )
@@ -29,10 +31,25 @@ func evaluateStrategicValue(board [][]models.Player, row, column int, botPlayer 
 	return score
 }
 
-// this simply checks the "threat" or the no of disks in a direction for the bot to block
-func threatDetection(board [][]models.Player, row, column int, deltaRow, deltaCol int, opponent models.Player) int {
-	positiveCount := utils.CountDiskInDirection(board, row, column, deltaRow, deltaCol, opponent)
-	negativeCount := utils.CountDiskInDirection(board, row, column, -deltaRow, -deltaCol, opponent)
-	return positiveCount + negativeCount + 1
-	
+func findBestColumn(scores map[int]int) int {
+	maxScore := -999
+	bestColumn := 3
+
+	for col := 0; col < models.Columns; col++ {
+		score, exists := scores[col]
+		if !exists {
+			continue
+		}
+
+		if score > maxScore {
+			maxScore = score
+			bestColumn = col
+		} else if score == maxScore {
+			if math.Abs(float64(col - 3)) < math.Abs(float64(bestColumn - 3)) {
+				bestColumn = col
+			}
+		}
+	}
+
+	return bestColumn
 }

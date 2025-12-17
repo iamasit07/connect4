@@ -14,15 +14,18 @@ import (
 
 // **MORE EXPLANATION IN README**
 
-func CalculateBestMove(g *game.Game, board [][]models.Player, botPlayer models.Player) int {
-	validColumns := utils.GetValidMoves(g)
-	bestColumn := -1
-	maxScore := -10000
+func CalculateBestMove(board [][]models.Player, botPlayer models.Player) int {
+	validColumns := utils.GetValidMoves(board)
+	scores := make(map[int]int)
+
+	for _, col := range validColumns {
+		scores[col] = 0
+	}
 	
 	// win in the next move
-	for row , col := range validColumns {
-		simulatedBoard, _, _ := utils.SimulateMove(board, col, botPlayer)
-		if game.CheckWin(simulatedBoard, row, col, botPlayer) {
+	for _ , col := range validColumns {
+		newBoard, row, _ := utils.SimulateMove(board, col, botPlayer)
+		if game.CheckWin(newBoard, row, col, botPlayer) {
 			return col
 		}
 	}
@@ -34,29 +37,24 @@ func CalculateBestMove(g *game.Game, board [][]models.Player, botPlayer models.P
 
 	// block oppenent from winning
 	for _, col := range validColumns {
-		simulatedBoard, _, _ := utils.SimulateMove(board, col, opponent)
-		if game.CheckWin(simulatedBoard, 0, col, opponent) {
-			return col
+		simulatedBoard, row, _ := utils.SimulateMove(board, col, opponent)
+		if game.CheckWin(simulatedBoard, row, col, opponent) {
+			scores[col] += 500
 		}
 	}
 
 	for _, col := range validColumns {
-		score := evaluateStrategicValue(board,0, col, botPlayer)
-		if score > maxScore {
-			maxScore = score
-			bestColumn = col
-		}
+		newBoard, row, _ := utils.SimulateMove(board, col, botPlayer)
+		strategicValue := evaluateStrategicValue(newBoard, row, col, botPlayer)
+		scores[col] += strategicValue
 	}
 
-	centerPreference := map[int]int{
-		3: 20,
-		2: 15,
-		4: 15,
-		1: 5,
-		5: 5,
-	}
-	if pref, exists := centerPreference[bestColumn]; exists {
-		maxScore += pref
-	}
-	return bestColumn
+	// creating a bias towards the center columns
+	scores[3] += 20
+	scores[2] += 15
+	scores[4] += 15
+	scores[1] += 5
+	scores[5] += 5
+
+	return findBestColumn(scores)
 }

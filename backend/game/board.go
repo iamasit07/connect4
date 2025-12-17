@@ -3,7 +3,11 @@ package game
 import "github.com/iamasit07/4-in-a-row/backend/models"
 
 func NewBoard() [][]models.Player {
-	return make([][]models.Player, models.Rows, models.Columns)
+	board := make([][]models.Player, models.Rows)
+	for i := range board {
+		board[i] = make([]models.Player, models.Columns)
+	}
+	return board
 }
 
 func IsValidMove(board [][]models.Player, column int) bool {
@@ -33,7 +37,7 @@ func DropDisk(board [][]models.Player, column int, player models.Player) (int, e
 }
 
 func IsBoardFull(board [][]models.Player) bool {
-	for c := range models.Columns {
+	for c := 0; c < models.Columns; c++ {
 		if board[0][c] == models.Empty {
 			return false
 		}
