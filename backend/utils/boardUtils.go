@@ -34,3 +34,15 @@ func SimulateMove(board [][]models.Player, column int, player models.Player) ([]
 	}
 	return newBoard, row, nil
 }
+
+func CountDirection(board [][]models.Player, row, columns int, deltaRow, deltaCol int, player models.Player) int {
+	count := 0
+	r, c := row+deltaRow, columns+deltaCol
+	for r >= 0 && r < models.Rows && c >= 0 && c < models.Columns && board[r][c] == player {
+		count++
+		r += deltaRow
+		c += deltaCol
+	}
+	return count
+}
+
