@@ -26,6 +26,7 @@ func GetValidMoves(g *game.Game) []int {
 	return validMoves
 }
 
+// this will simulate a move and give the result to the coller
 func SimulateMove(board [][]models.Player, column int, player models.Player) ([][]models.Player, int, error) {
 	newBoard := CopyBoard(board)
 	row, err := game.DropDisk(newBoard, column, player)
@@ -35,7 +36,8 @@ func SimulateMove(board [][]models.Player, column int, player models.Player) ([]
 	return newBoard, row, nil
 }
 
-func CountDirection(board [][]models.Player, row, columns int, deltaRow, deltaCol int, player models.Player) int {
+// this counts the number of disks in a specific direction
+func CountDiskInDirection(board [][]models.Player, row, columns int, deltaRow, deltaCol int, player models.Player) int {
 	count := 0
 	r, c := row+deltaRow, columns+deltaCol
 	for r >= 0 && r < models.Rows && c >= 0 && c < models.Columns && board[r][c] == player {
@@ -45,4 +47,3 @@ func CountDirection(board [][]models.Player, row, columns int, deltaRow, deltaCo
 	}
 	return count
 }
-
