@@ -2,11 +2,11 @@ package game
 
 import "github.com/iamasit07/4-in-a-row/backend/models"
 
-func NewGame() [models.Rows][models.Columns]int {
-	return [models.Rows][models.Columns]int{}
+func NewBoard() [][]models.Player {
+	return make([][]models.Player, models.Rows, models.Columns)
 }
 
-func IsValidMove(board [models.Rows][models.Columns] int, column int) bool {
+func IsValidMove(board [][]models.Player, column int) bool {
 	if column < 0 || column >= models.Columns {
 		return false
 	}
@@ -33,7 +33,7 @@ func DropDisk(board [][]models.Player, column int, player models.Player) (int, e
 }
 
 func IsBoardFull(board [][]models.Player) bool {
-	if board[0] != 0 {
+	if board[0] != models.Empty {
 		return true
 	}
 
