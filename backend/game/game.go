@@ -21,15 +21,15 @@ func NewGame() *Game {
 	return &Game{
 		Board: board,
 		CurrentPlayer: models.Player1,
-		Status: models.Ongoing,
+		Status: models.StatusActive,
 		Winner: models.Empty,
 		MoveCount: 0,
 	}
 }
 
 func MakeMove(game *Game, column int) error {
-	if game.Status != models.Ongoing {
-		return models.ErrGameOver
+	if game.Status != models.StatusActive {
+		return models.ErrInvalidMove
 	}
 
 	if !IsValidMove(game.Board, column) {
@@ -44,13 +44,13 @@ func MakeMove(game *Game, column int) error {
 	game.MoveCount++
 
 	if CheckWin(game.Board, row, column, game.CurrentPlayer) {
-		game.Status = models.Finished
+		game.Status = models.StatusWon
 		game.Winner = game.CurrentPlayer
 		return nil
 	}
 
 	if IsBoardFull(game.Board) {
-		game.Status = models.Draw
+		game.Status = models.StatusDraw
 		return nil
 	}
 

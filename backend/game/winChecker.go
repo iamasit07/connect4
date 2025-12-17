@@ -75,5 +75,3 @@ func CheckWin(board [][]models.Player, row, column int, player models.Player) bo
 
 	return false
 }
-
-func 

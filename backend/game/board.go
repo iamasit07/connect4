@@ -33,9 +33,11 @@ func DropDisk(board [][]models.Player, column int, player models.Player) (int, e
 }
 
 func IsBoardFull(board [][]models.Player) bool {
-	if board[0] != models.Empty {
-		return true
+	for c := 0; c < models.Columns; c++ {
+		if board[0][c] == models.Empty {
+			return false
+		}
 	}
 
-	return false
+	return true
 }
