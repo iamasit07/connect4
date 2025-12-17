@@ -24,3 +24,15 @@ const (
 	StatusWon GameStatus = "won"
 	StatusDraw GameStatus = "draw"
 )
+
+// basic error that can occur
+type Error string
+
+func (e Error) Error() string {
+	return string(e)
+}
+
+const (
+	ErrInvalidMove Error = "invalid move"
+	ErrColumnFull  Error = "column is full"
+)
