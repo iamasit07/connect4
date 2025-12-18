@@ -7,7 +7,7 @@ import (
 	"github.com/iamasit07/4-in-a-row/backend/utils"
 )
 
-func evaluateStrategicValue(board [][]models.Player, row, column int, botPlayer models.Player) int {
+func evaluateStrategicValue(board [][]models.PlayerID, row, column int, botPlayer models.PlayerID) int {
 	score := 0
 	directions := [][2]int{
 		{0, 1},  // horizontal
