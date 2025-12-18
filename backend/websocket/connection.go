@@ -5,43 +5,51 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/gorilla/websocket"
 	"github.com/iamasit07/4-in-a-row/backend/models"
-	"github.com/iamasit07/4-in-a-row/backend/websocket"
 )
 
+// important part to manage websocket connections & operations
 type ConnectionManager struct {
-	connections map[string]*websocket.Conn
+	connections map[string]*websocket.Conn  // username -> websocket connection
 	mu          sync.RWMutex
 }
 
 func NewConnectionManager() *ConnectionManager {
 	conn := &ConnectionManager{
 		connections: make(map[string]*websocket.Conn),
+		mu:          sync.RWMutex{},
 	}
 	return conn
 }
 
-func AddConnection(username string, conn *websocket.Conn, manager *ConnectionManager) {
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	manager.connections[username] = conn
+func (cm *ConnectionManager) AddConnection(username string, conn *websocket.Conn) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	
+	if _, exists := cm.connections[username]; exists {
+		return fmt.Errorf("username already connected")
+	}
+	
+	cm.connections[username] = conn
+	return nil
 }
 
-func RemoveConnection(username string, manager *ConnectionManager) {
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	delete(manager.connections, username)
+func (cm *ConnectionManager) RemoveConnection(username string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	delete(cm.connections, username)
 }
 
-func GetConnection(username string, manager *ConnectionManager) (*websocket.Conn, bool) {
-	manager.mu.RLock()
-	defer manager.mu.RUnlock()
-	conn, exists := manager.connections[username]
+func (cm *ConnectionManager) GetConnection(username string) (*websocket.Conn, bool) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	conn, exists := cm.connections[username]
 	return conn, exists
 }
 
-func SendMessage(username string, message models.ServerMessage, manager *ConnectionManager) error {
-	conn, exists := GetConnection(username, manager)
+func (cm *ConnectionManager) SendMessage(username string, message models.ServerMessage) error {
+	conn, exists := cm.GetConnection(username)
 	if !exists {
 		return fmt.Errorf("connection for username %s does not exist", username)
 	}
@@ -52,25 +60,4 @@ func SendMessage(username string, message models.ServerMessage, manager *Connect
 	}
 
 	return conn.WriteMessage(websocket.TextMessage, data)
-}
-
-func BroadCastToGame(player1, player2 string, message models.ServerMessage, manager *ConnectionManager) error {
-	err1 := SendMessage(player1, message, manager)
-	err2 := SendMessage(player2, message, manager)
-
-	if player1 == "BOT" {
-		err1 = nil
-	} else if player2 == "BOT" {
-		err2 = nil
-	}
-
-	if err1 != nil && err2 != nil {
-		return fmt.Errorf("failed to send message to both players: %v, %v", err1, err2)
-	} else if err1 != nil {
-		return fmt.Errorf("failed to send message to player1 (%s): %v", player1, err1)
-	} else if err2 != nil {
-		return fmt.Errorf("failed to send message to player2 (%s): %v", player2, err2)
-	} else {
-		return nil
-	}
 }

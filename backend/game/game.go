@@ -5,17 +5,17 @@ import "github.com/iamasit07/4-in-a-row/backend/models"
 // the purpose of this file is to check the overall game logic
 
 type Game struct {
-	Board [][]models.Player
-	CurrentPlayer models.Player
+	Board [][]models.PlayerID
+	CurrentPlayer models.PlayerID
 	Status models.GameStatus
-	Winner models.Player
+	Winner models.PlayerID
 	MoveCount int
 }
 
-func NewGame() *Game {
-	board := make([][]models.Player, models.Rows)
+func(g *Game) NewGame() *Game {
+	board := make([][]models.PlayerID, models.Rows)
 	for i := range board {
-		board[i] = make([]models.Player, models.Columns)
+		board[i] = make([]models.PlayerID, models.Columns)
 	}
 
 	return &Game{
@@ -27,39 +27,43 @@ func NewGame() *Game {
 	}
 }
 
-func MakeMove(game *Game, column int) error {
-	if game.Status != models.StatusActive {
-		return models.ErrInvalidMove
+func (g *Game) MakeMove(player models.PlayerID, column int) (int, error) {
+	if g.Status != models.StatusActive {
+		return -1, models.ErrInvalidMove
 	}
 
-	if !IsValidMove(game.Board, column) {
-		return models.ErrInvalidMove
+	if !IsValidMove(g.Board, column) {
+		return -1, models.ErrInvalidMove
 	}
 
-	row, err := DropDisk(game.Board, column, game.CurrentPlayer)
+	row, err := DropDisk(g.Board, column, g.CurrentPlayer)
 	if err != nil {
-		return err
+		return -1, err
 	}
 	
-	game.MoveCount++
+	g.MoveCount++
 
-	if CheckWin(game.Board, row, column, game.CurrentPlayer) {
-		game.Status = models.StatusWon
-		game.Winner = game.CurrentPlayer
-		return nil
+	if CheckWin(g.Board, row, column, g.CurrentPlayer) {
+		g.Status = models.StatusWon
+		g.Winner = g.CurrentPlayer
+		return -1, nil
 	}
 
-	if IsBoardFull(game.Board) {
-		game.Status = models.StatusDraw
-		return nil
+	if IsBoardFull(g.Board) {
+		g.Status = models.StatusDraw
+		return -1, nil
 	}
 
 	// switch player
-	if game.CurrentPlayer == models.Player1 {
-		game.CurrentPlayer = models.Player2
+	if g.CurrentPlayer == models.Player1 {
+		g.CurrentPlayer = models.Player2
 	} else {
-		game.CurrentPlayer = models.Player1
+		g.CurrentPlayer = models.Player1
 	}
 	
-	return nil
+	return row, nil
+}
+
+func (g *Game) IsFinished() bool {
+	return g.Status == models.StatusWon || g.Status == models.StatusDraw
 }

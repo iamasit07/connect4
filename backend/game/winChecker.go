@@ -2,7 +2,7 @@ package game
 
 import "github.com/iamasit07/4-in-a-row/backend/models"
 
-func CheckWin(board [][]models.Player, row, column int, player models.Player) bool{
+func CheckWin(board [][]models.PlayerID, row, column int, player models.PlayerID) bool{
 	// to check the win we have to check in 4 diff directions
 
 	// horizontal 

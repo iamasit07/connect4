@@ -14,7 +14,7 @@ import (
 
 // **MORE EXPLANATION IN README**
 
-func CalculateBestMove(board [][]models.Player, botPlayer models.Player) int {
+func CalculateBestMove(board [][]models.PlayerID, botPlayer models.PlayerID) int {
 	validColumns := utils.GetValidMoves(board)
 	scores := make(map[int]int)
 

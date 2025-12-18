@@ -1,54 +1,57 @@
 package models
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
 
 type Match struct {
-	Player1   string
-	Player2   string
-	GameID    string
+	Player1 string
+	Player2 string
+	GameID  string
 }
 
 type MatchmakingQueue struct {
-	waitingPlayers []string
-	mu             sync.Mutex
-	matchChannel   chan Match
-	timer 		*map[string]*time.Timer
+	WaitingPlayers []string
+	Mux            *sync.Mutex
+	MatchChannel   chan Match
+	Timer          *map[string]*time.Timer
 }
 
-func NewMatchmakingQueue() *MatchmakingQueue {
+func (m *MatchmakingQueue) NewMatchmakingQueue() *MatchmakingQueue {
+	timerMap := make(map[string]*time.Timer)
 	queue := &MatchmakingQueue{
-		waitingPlayers: []string{},
-		matchChannel:   make(chan Match, 100),
-		timer:          &map[string]*time.Timer{},
+		WaitingPlayers: []string{},
+		MatchChannel:   make(chan Match, 100),
+		Mux:            &sync.Mutex{},
+		Timer:          &timerMap,
 	}
 	return queue
 }
 
-func AddPlayer(username string, queue *MatchmakingQueue) error {
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
+func (m *MatchmakingQueue) AddPlayerToQueue(username string) error {
+	m.Mux.Lock()
+	defer m.Mux.Unlock()
 	
-	for _, player := range queue.waitingPlayers {
+	for _, player := range m.WaitingPlayers {
 		if player == username {
 			return nil
 		}
 	}
 
-	if len(queue.waitingPlayers) == 0 {
-		queue.waitingPlayers = append(queue.waitingPlayers, username)
-		time := time.AfterFunc(10 * time.Second, func(){
-			HandleTimeout(username, queue)
+	if len(m.WaitingPlayers) == 0 {
+		m.WaitingPlayers = append(m.WaitingPlayers, username)
+		timer := time.AfterFunc(10*time.Second, func() {
+			m.HandleTimeout(username)
 		})
-		(*queue.timer)[username] = time
+		(*m.Timer)[username] = timer
 	} else {
-		opponent := queue.waitingPlayers[0]
-		queue.waitingPlayers = queue.waitingPlayers[1:]
+		opponent := m.WaitingPlayers[0]
+		m.WaitingPlayers = m.WaitingPlayers[1:]
 
-		timer1 := (*queue.timer)[opponent]
-		timer2 := (*queue.timer)[username]
+		timer1 := (*m.Timer)[opponent]
+		timer2 := (*m.Timer)[username]
 		if timer1 != nil {
 			timer1.Stop()
 		}
@@ -56,8 +59,8 @@ func AddPlayer(username string, queue *MatchmakingQueue) error {
 			timer2.Stop()
 		}
 
-		delete(*queue.timer, opponent)
-		delete(*queue.timer, username)
+		delete(*m.Timer, opponent)
+		delete(*m.Timer, username)
 
 		match := Match{
 			Player1: opponent,
@@ -65,54 +68,60 @@ func AddPlayer(username string, queue *MatchmakingQueue) error {
 			GameID:  GenerateGameID(),
 		}
 
-		queue.matchChannel <- match
+		m.MatchChannel <- match
 	}
+	return nil
 }
 
-func HandleTimeout(username string, queue *MatchmakingQueue) {
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
+func (m *MatchmakingQueue) HandleTimeout(username string) {
+	m.Mux.Lock()
+	defer m.Mux.Unlock()
 
-	for i, player := range queue.waitingPlayers {
+	for i, player := range m.WaitingPlayers {
 		if player == username {
-			queue.waitingPlayers = append(queue.waitingPlayers[:i], queue.waitingPlayers[i+1:]...)
+			m.WaitingPlayers = append(m.WaitingPlayers[:i], m.WaitingPlayers[i+1:]...)
 			break
 		}
 	}
 
-	timer := (*queue.timer)[username]
+	timer := (*m.Timer)[username]
 	if timer != nil {
 		timer.Stop()
 	}
-	delete(*queue.timer, username)
+	delete(*m.Timer, username)
 
 	match := Match{
 		Player1: username,
-		Player2: "BOT",
+		Player2: BotUsername,
 		GameID:  GenerateGameID(),
 	}
 
-	queue.matchChannel <- match
+	m.MatchChannel <- match
 }
 
-func GetMatchChannel(queue *MatchmakingQueue) chan Match {
-	return queue.matchChannel
+func (m *MatchmakingQueue) GetMatchChannel() chan Match {
+	return m.MatchChannel
 }
 
-func RemovePlayer(username string, queue *MatchmakingQueue) {
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
+func (m *MatchmakingQueue) RemovePlayer(username string) {
+	m.Mux.Lock()
+	defer m.Mux.Unlock()
 
-	for i, player := range queue.waitingPlayers {
+	for i, player := range m.WaitingPlayers {
 		if player == username {
-			queue.waitingPlayers = append(queue.waitingPlayers[:i], queue.waitingPlayers[i+1:]...)
+			m.WaitingPlayers = append(m.WaitingPlayers[:i], m.WaitingPlayers[i+1:]...)
 			break
 		}
 
-		timer := (*queue.timer)[username]
+		timer := (*m.Timer)[username]
 		if timer != nil {
 			timer.Stop()
 		}
-		delete(*queue.timer, username)
+		delete(*m.Timer, username)
 	}
+}
+
+func GenerateGameID() string {
+	id := time.Now().UnixNano()
+	return fmt.Sprintf("%d", id)
 }

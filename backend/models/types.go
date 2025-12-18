@@ -1,13 +1,15 @@
 package models
 
-// to represent the players in the game
-type Player int
+type PlayerID int
 
 const (
-	Empty Player = 0
-	Player1 Player = 1
-	Player2 Player = 2
+	Empty PlayerID = 0
+	Player1 PlayerID = 1
+	Player2 PlayerID = 2
 )
+
+// Bot username constant
+const BotUsername = "BOT"
 
 //for board representation 
 const (

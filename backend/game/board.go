@@ -2,15 +2,15 @@ package game
 
 import "github.com/iamasit07/4-in-a-row/backend/models"
 
-func NewBoard() [][]models.Player {
-	board := make([][]models.Player, models.Rows)
+func NewBoard() [][]models.PlayerID {
+	board := make([][]models.PlayerID, models.Rows)
 	for i := range board {
-		board[i] = make([]models.Player, models.Columns)
+		board[i] = make([]models.PlayerID, models.Columns)
 	}
 	return board
 }
 
-func IsValidMove(board [][]models.Player, column int) bool {
+func IsValidMove(board [][]models.PlayerID, column int) bool {
 	if column < 0 || column >= models.Columns {
 		return false
 	}
@@ -23,7 +23,7 @@ func IsValidMove(board [][]models.Player, column int) bool {
 	return true
 }
 
-func DropDisk(board [][]models.Player, column int, player models.Player) (int, error) {
+func DropDisk(board [][]models.PlayerID, column int, player models.PlayerID) (int, error) {
 	// shifting all the disk from top to bottom till it 
 	// reaches the end or another disk
 	for row := models.Rows - 1; row >= 0; row-- {
@@ -36,7 +36,7 @@ func DropDisk(board [][]models.Player, column int, player models.Player) (int, e
 	return -1, models.ErrColumnFull
 }
 
-func IsBoardFull(board [][]models.Player) bool {
+func IsBoardFull(board [][]models.PlayerID) bool {
 	for c := 0; c < models.Columns; c++ {
 		if board[0][c] == models.Empty {
 			return false
