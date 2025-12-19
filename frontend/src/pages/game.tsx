@@ -4,28 +4,41 @@ import Board from "../components/board";
 import useWebSocket from "../hooks/useWebSocket";
 
 const GamePage: React.FC = () => {
-  const { connected, gameState, joinQueue, makeMove } = useWebSocket();
+  const { connected, gameState, joinQueue, makeMove, reconnect } =
+    useWebSocket();
   const navigate = useNavigate();
   const hasJoinedQueue = useRef(false);
 
   useEffect(() => {
     const username = localStorage.getItem("username");
-    if (!username) {
+    const gameID = localStorage.getItem("gameID");
+    const isReconnecting = localStorage.getItem("isReconnecting") === "true";
+
+    if (!username && !gameID) {
       navigate("/");
       return;
     }
 
-    // Only join queue once when connected
     if (connected && !hasJoinedQueue.current) {
-      console.log("Joining queue with username:", username);
       hasJoinedQueue.current = true;
 
-      // Small delay to ensure WebSocket is fully ready
       setTimeout(() => {
-        joinQueue(username);
+        if (isReconnecting) {
+          console.log("Attempting to reconnect with:", { username, gameID });
+          localStorage.removeItem("isReconnecting");
+          localStorage.removeItem("gameID");
+          reconnect(username || undefined, gameID || undefined);
+        } else {
+          if (!username) {
+            navigate("/");
+            return;
+          }
+          console.log("Joining queue with username:", username);
+          joinQueue(username);
+        }
       }, 100);
     }
-  }, [connected, navigate, joinQueue]);
+  }, [connected, navigate, joinQueue, reconnect]);
 
   const handleColumnClick = (col: number) => {
     console.log("Column clicked:", col);
@@ -68,6 +81,13 @@ const GamePage: React.FC = () => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-6 p-4">
+      {/* Game ID Display */}
+      {gameState.gameId && (
+        <div className="text-xs text-gray-500 font-mono">
+          Game ID: {gameState.gameId}
+        </div>
+      )}
+
       <div className="text-center">
         {gameState.gameOver ? (
           <h2 className="text-2xl font-bold text-gray-900">

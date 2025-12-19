@@ -38,6 +38,14 @@ func (sm *SessionManager) GetSessionByPlayer(username string) (*GameSession, boo
 	return session, exists
 }
 
+func (sm *SessionManager) GetSessionByGameID(gameID string) (*GameSession, bool) {
+	sm.Mux.Lock()
+	defer sm.Mux.Unlock()
+
+	session, exists := sm.Session[gameID]
+	return session, exists
+}
+
 func (sm *SessionManager) NewSessionManager() *SessionManager {
 	session := &SessionManager{
 		Session:    make(map[string]*GameSession),

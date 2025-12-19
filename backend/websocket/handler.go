@@ -129,23 +129,54 @@ func HandleMakeMove(message models.ClientMessage, currentUsername string, isAuth
 
 func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, sessionManager *server.SessionManager,
 	connManager *ConnectionManager, currentUsername *string, isAuthenticated *bool) {
+	gameID := message.GameID
 	username := message.Username
-	if username == "" {
-		SendErrorMessage(conn, "invalid_username", "Username cannot be empty")
+	
+	// User must provide at least one: username or gameID
+	if gameID == "" && username == "" {
+		SendErrorMessage(conn, "invalid_input", "Please provide either username or game ID")
 		return
 	}
 
-	session, exists := sessionManager.GetSessionByPlayer(username)
+	var session *server.GameSession
+	var exists bool
+	var playerUsername string
+
+	// Try to find session by gameID first, then by username
+	if gameID != "" {
+		session, exists = sessionManager.GetSessionByGameID(gameID)
+		if exists && username != "" {
+			// Verify username is in this game
+			_, isPlayer := session.GetPlayerID(username)
+			if !isPlayer {
+				SendErrorMessage(conn, "not_in_game", "Username does not match this game")
+				return
+			}
+			playerUsername = username
+		} else if exists {
+			// GameID provided but no username, need to determine which player
+			if session.Player1Username != models.BotUsername {
+				playerUsername = session.Player1Username
+			} else {
+				playerUsername = session.Player2Username
+			}
+		}
+	} else {
+		// Only username provided
+		session, exists = sessionManager.GetSessionByPlayer(username)
+		playerUsername = username
+	}
+
 	if !exists {
 		SendErrorMessage(conn, "no_active_game", "No active game found for reconnection")
 		return
 	}
 
-	*currentUsername = username
+	*currentUsername = playerUsername
 	*isAuthenticated = true
-	connManager.AddConnection(username, conn)
+	connManager.AddConnection(playerUsername, conn)
 
-	err := session.HandleReconnect(username, connManager)
+	err := session.HandleReconnect(playerUsername, connManager)
 	if err != nil {
 		SendErrorMessage(conn, "reconnect_failed", err.Error())
 		*isAuthenticated = false
