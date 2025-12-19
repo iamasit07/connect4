@@ -33,7 +33,7 @@ func (m *MatchmakingQueue) NewMatchmakingQueue() *MatchmakingQueue {
 func (m *MatchmakingQueue) AddPlayerToQueue(username string) error {
 	m.Mux.Lock()
 	defer m.Mux.Unlock()
-	
+
 	for _, player := range m.WaitingPlayers {
 		if player == username {
 			return nil
@@ -112,13 +112,13 @@ func (m *MatchmakingQueue) RemovePlayer(username string) {
 			m.WaitingPlayers = append(m.WaitingPlayers[:i], m.WaitingPlayers[i+1:]...)
 			break
 		}
-
-		timer := (*m.Timer)[username]
-		if timer != nil {
-			timer.Stop()
-		}
-		delete(*m.Timer, username)
 	}
+
+	timer := (*m.Timer)[username]
+	if timer != nil {
+		timer.Stop()
+	}
+	delete(*m.Timer, username)
 }
 
 func GenerateGameID() string {

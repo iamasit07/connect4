@@ -98,6 +98,43 @@ const useWebSocket = (): UseWebSocketReturn => {
     ws.current.onclose = () => {
       console.log("WebSocket disconnected");
       setConnected(false);
+      
+      // Attempt to reconnect after a short delay if user had an active game
+      const username = localStorage.getItem("username");
+      if (username && gameState.gameId) {
+        console.log("Attempting to reconnect in 2 seconds...");
+        setTimeout(() => {
+          console.log("Reconnecting...");
+          ws.current = new WebSocket("ws://localhost:8080/ws");
+          
+          ws.current.onopen = () => {
+            console.log("Reconnected! Attempting to rejoin game...");
+            setConnected(true);
+            // Send reconnect message
+            const reconnectMsg = { type: "reconnect", username };
+            ws.current?.send(JSON.stringify(reconnectMsg));
+          };
+          
+          // Re-attach handlers (same as initial setup)
+          ws.current.onmessage = (event: MessageEvent) => {
+            const message: ServerMessage = JSON.parse(event.data);
+            console.log("Received message:", message);
+            
+            // Handle messages same as before
+            handleServerMessage(message);
+          };
+          
+          ws.current.onerror = (error: Event) => {
+            console.error("WebSocket error:", error);
+            setConnected(false);
+          };
+          
+          ws.current.onclose = () => {
+            console.log("WebSocket disconnected");
+            setConnected(false);
+          };
+        }, 2000);
+      }
     };
 
     return () => {
@@ -105,7 +142,7 @@ const useWebSocket = (): UseWebSocketReturn => {
         ws.current.close();
       }
     };
-  }, []);
+  }, []); // Empty dependency array - only run once on mount
 
   const sendMessage = (message: ClientMessage) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {

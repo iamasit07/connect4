@@ -57,7 +57,7 @@ func SaveGame(gameID, player1, player2, winner, reason string, totalMoves, durat
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 	`
 
-	_, err = tx.Exec(query, gameID, player1, player2, winner, reason, totalMoves, durationSeconds, createdAt, finishedAt)
+	_, err = tx.Exec(query, gameID, gameID, player1, player2, winner, reason, totalMoves, durationSeconds, createdAt, finishedAt)
 	if err != nil {
 		return fmt.Errorf("failed to insert game record: %v", err)
 	}

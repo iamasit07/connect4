@@ -19,7 +19,7 @@ func CopyBoard(board [][]models.PlayerID) [][]models.PlayerID {
 func GetValidMoves(board [][]models.PlayerID) []int {
 	validMoves := []int{}
 	for col := 0; col < models.Columns; col++ {
-		if board[0][col] == models.Empty {
+		if board[0][col] == models.Empty && game.IsValidMove(board, col) {
 			validMoves = append(validMoves, col)
 		}
 	}

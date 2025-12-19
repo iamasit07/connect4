@@ -54,7 +54,7 @@ func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Requ
 		case "join_queue":
 			HandleJoinQueue(clientMessage, conn, cm, matchMakingQueue, &currentUsername, &isAuthenticated)
 		case "make_move":
-			HandleMakeMove(clientMessage, currentUsername, isAuthenticated, conn, sessionManager, cm)
+			HandleMakeMove(clientMessage, currentUsername, &isAuthenticated, conn, sessionManager, cm)
 		case "reconnect":
 			HandleReconnect(clientMessage, conn, sessionManager, cm, &currentUsername, &isAuthenticated)
 		default:
@@ -102,9 +102,9 @@ func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
 	conn.WriteMessage(websocket.TextMessage, responseData)
 }
 
-func HandleMakeMove(message models.ClientMessage, currentUsername string, isAuthenticated bool,
+func HandleMakeMove(message models.ClientMessage, currentUsername string, isAuthenticated *bool,
 	conn *websocket.Conn, sessionManager *server.SessionManager, connManager *ConnectionManager) {
-	if !isAuthenticated {
+	if !*isAuthenticated {
 		SendErrorMessage(conn, "unauthenticated", "You must join the queue before making a move")
 		return
 	}
