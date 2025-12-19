@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/iamasit07/4-in-a-row/backend/bot"
+	"github.com/iamasit07/4-in-a-row/backend/db"
 	"github.com/iamasit07/4-in-a-row/backend/game"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/utils"
@@ -16,15 +17,14 @@ type ConnectionManagerInterface interface {
 	SendMessage(username string, message models.ServerMessage) error
 }
 
-
 type GameSession struct {
 	GameID              string
 	Player1Username     string
 	Player2Username     string
 	Game                *game.Game
-	PlayerMapping       map[string]models.PlayerID  // username -> PlayerID (1 or 2)
+	PlayerMapping       map[string]models.PlayerID // username -> PlayerID (1 or 2)
 	Reason              string
-	DisconnectedPlayers []string  // usernames
+	DisconnectedPlayers []string // usernames
 	ReconnectTimer      *time.Timer
 	CreatedAt           time.Time
 	FinishedAt          time.Time
@@ -63,7 +63,7 @@ func NewGameSession(player1Username, player2Username string, conn ConnectionMana
 	mapping := make(map[string]models.PlayerID)
 	mapping[player1Username] = models.Player1
 	mapping[player2Username] = models.Player2
-	
+
 	gs := &GameSession{
 		GameID:          gameID,
 		Player1Username: player1Username,
@@ -83,7 +83,7 @@ func NewGameSession(player1Username, player2Username string, conn ConnectionMana
 		CurrentTurn: int(gs.Game.CurrentPlayer),
 	}
 	conn.SendMessage(player1Username, player1Message)
-	
+
 	// Send game start message to player2 (if not bot)
 	if player2Username != models.BotUsername {
 		player2Message := models.ServerMessage{
@@ -95,14 +95,14 @@ func NewGameSession(player1Username, player2Username string, conn ConnectionMana
 		}
 		conn.SendMessage(player2Username, player2Message)
 	}
-	
+
 	return gs
 }
 
 func (gs *GameSession) HandleMove(username string, column int, conn ConnectionManagerInterface) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
-	
+
 	playerID, exists := gs.GetPlayerID(username)
 	if !exists {
 		return fmt.Errorf("player not in this game")
@@ -121,13 +121,31 @@ func (gs *GameSession) HandleMove(username string, column int, conn ConnectionMa
 	if gs.Game.Status == models.StatusWon {
 		gs.FinishedAt = time.Now()
 		winnerUsername := gs.GetUsername(gs.Game.Winner)
-		
+		gs.Reason = "connect_four"
+
+		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
+		err := db.SaveGame(
+			gs.GameID,
+			gs.Player1Username,
+			gs.Player2Username,
+			winnerUsername,
+			gs.Reason,
+			gs.Game.MoveCount,
+			duration,
+			gs.CreatedAt,
+			gs.FinishedAt,
+		)
+		if err != nil {
+			return err
+		}
+
 		game_over_message := models.ServerMessage{
 			Type:   "game_over",
 			Winner: winnerUsername,
-			Reason: "connect_four",
+			Reason: gs.Reason,
 			Board:  gs.Game.Board,
 		}
+
 		conn.SendMessage(gs.Player1Username, game_over_message)
 		if !gs.IsBot() {
 			conn.SendMessage(gs.Player2Username, game_over_message)
@@ -261,7 +279,7 @@ func (gs *GameSession) HandleReconnectTimeout(username string, conn ConnectionMa
 
 	// Determine winner (opponent of disconnected player)
 	opponentUsername := gs.GetOpponentUsername(username)
-	
+
 	game_over_message := models.ServerMessage{
 		Type:   "game_over",
 		GameID: gs.GameID,
