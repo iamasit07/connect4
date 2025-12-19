@@ -21,7 +21,7 @@ const LeaderboardPage = () => {
 
   const fetchLeaderboard = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8080";
+      const apiUrl = "https://four-in-a-row-backend-tnan.onrender.com";
       const response = await fetch(`${apiUrl}/api/leaderboard?limit=10`);
       if (!response.ok) {
         throw new Error("Failed to fetch leaderboard");
