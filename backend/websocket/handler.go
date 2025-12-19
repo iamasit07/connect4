@@ -63,7 +63,7 @@ func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Requ
 
 		switch clientMessage.Type {
 		case "join_queue":
-			HandleJoinQueue(clientMessage, conn, cm, matchMakingQueue, &currentUsername, &isAuthenticated)
+			HandleJoinQueue(clientMessage, conn, cm, matchMakingQueue, sessionManager, &currentUsername, &isAuthenticated)
 		case "make_move":
 			HandleMakeMove(clientMessage, currentUsername, &isAuthenticated, conn, sessionManager, cm)
 		case "reconnect":
@@ -75,7 +75,7 @@ func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Requ
 }
 
 func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
-	connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, currentUsername *string, isAuthenticated *bool) {
+	connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, sessionManager *server.SessionManager, currentUsername *string, isAuthenticated *bool) {
 	if message.Username == "" {
 		SendErrorMessage(conn, "invalid_username", "Username cannot be empty")
 		return
@@ -88,6 +88,22 @@ func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
 
 	*currentUsername = message.Username
 	*isAuthenticated = true
+
+	// Check for existing active session
+	session, exists := sessionManager.GetSessionByPlayer(*currentUsername)
+	if exists && !session.Game.IsFinished() {
+		// Player is abandoning an active game - terminate it
+		err := session.TerminateSession(*currentUsername, "abandoned", connManager)
+		if err != nil {
+			log.Printf("Failed to terminate abandoned session: %v", err)
+		}
+		// Remove from session manager
+		sessionManager.RemoveSession(
+			session.GameID,
+			session.Player1Username,
+			session.Player2Username,
+		)
+	}
 
 	err := connManager.AddConnection(*currentUsername, conn)
 	if err != nil {
@@ -143,51 +159,59 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, session
 	gameID := message.GameID
 	username := message.Username
 
-	// User must provide at least one: username or gameID
-	if gameID == "" && username == "" {
-		SendErrorMessage(conn, "invalid_input", "Please provide either username or game ID")
+	// SECURITY CHECK 1: Require BOTH gameID and username
+	if gameID == "" || username == "" {
+		SendErrorMessage(conn, "invalid_input", "Both game ID and username are required for reconnection")
 		return
 	}
 
-	var session *server.GameSession
-	var exists bool
-	var playerUsername string
-
-	// Try to find session by gameID first, then by username
-	if gameID != "" {
-		session, exists = sessionManager.GetSessionByGameID(gameID)
-		if exists && username != "" {
-			// Verify username is in this game
-			_, isPlayer := session.GetPlayerID(username)
-			if !isPlayer {
-				SendErrorMessage(conn, "not_in_game", "Username does not match this game")
-				return
-			}
-			playerUsername = username
-		} else if exists {
-			// GameID provided but no username, need to determine which player
-			if session.Player1Username != models.BotUsername {
-				playerUsername = session.Player1Username
-			} else {
-				playerUsername = session.Player2Username
-			}
-		}
-	} else {
-		// Only username provided
-		session, exists = sessionManager.GetSessionByPlayer(username)
-		playerUsername = username
-	}
-
+	// Find session by gameID
+	session, exists := sessionManager.GetSessionByGameID(gameID)
 	if !exists {
-		SendErrorMessage(conn, "no_active_game", "No active game found for reconnection")
+		SendErrorMessage(conn, "no_active_game", "No active game found with this ID")
 		return
 	}
 
-	*currentUsername = playerUsername
-	*isAuthenticated = true
-	connManager.AddConnection(playerUsername, conn)
+	// SECURITY CHECK 2: Verify game is not finished
+	if session.Game.IsFinished() {
+		SendErrorMessage(conn, "game_finished", "Cannot reconnect to a finished game")
+		return
+	}
 
-	err := session.HandleReconnect(playerUsername, connManager)
+	// SECURITY CHECK 3: Verify username is actually a player in this game
+	_, isPlayer := session.GetPlayerID(username)
+	if !isPlayer {
+		SendErrorMessage(conn, "not_in_game", "You are not a player in this game")
+		return
+	}
+
+	// SECURITY CHECK 4: Verify username is not currently connected
+	_, isConnected := connManager.GetConnection(username)
+	if isConnected {
+		SendErrorMessage(conn, "already_connected", "This username is already connected")
+		return
+	}
+
+	// SECURITY CHECK 5: Verify player is actually disconnected
+	isDisconnected := false
+	for _, disconnectedUser := range session.DisconnectedPlayers {
+		if disconnectedUser == username {
+			isDisconnected = true
+			break
+		}
+	}
+
+	if !isDisconnected {
+		SendErrorMessage(conn, "not_disconnected", "You are not disconnected from this game")
+		return
+	}
+
+	// All security checks passed - proceed with reconnection
+	*currentUsername = username
+	*isAuthenticated = true
+	connManager.AddConnection(username, conn)
+
+	err := session.HandleReconnect(username, connManager)
 	if err != nil {
 		SendErrorMessage(conn, "reconnect_failed", err.Error())
 		*isAuthenticated = false

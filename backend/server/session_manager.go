@@ -55,3 +55,16 @@ func (sm *SessionManager) NewSessionManager() *SessionManager {
 	return session
 }
 
+func (sm *SessionManager) RemoveSession(gameID string, player1, player2 string) error {
+	sm.Mux.Lock()
+	defer sm.Mux.Unlock()
+
+	delete(sm.Session, gameID)
+	delete(sm.UserToGame, player1)
+	if player2 != "BOT" {
+		delete(sm.UserToGame, player2)
+	}
+
+	return nil
+}
+

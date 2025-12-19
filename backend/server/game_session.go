@@ -239,6 +239,44 @@ func (gs *GameSession) HandleDisconnect(username string, conn ConnectionManagerI
 
 	gs.DisconnectedPlayers = append(gs.DisconnectedPlayers, username)
 
+	// Check if both players are now disconnected
+	if len(gs.DisconnectedPlayers) >= 2 {
+		// Both players disconnected - end game as draw immediately
+		gs.FinishedAt = time.Now()
+		gs.Reason = "both_disconnected"
+
+		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
+		err := db.SaveGame(
+			gs.GameID,
+			gs.Player1Username,
+			gs.Player2Username,
+			"draw",
+			gs.Reason,
+			gs.Game.MoveCount,
+			duration,
+			gs.CreatedAt,
+			gs.FinishedAt,
+		)
+		if err != nil {
+			return err
+		}
+
+		game_over_message := models.ServerMessage{
+			Type:   "game_over",
+			Winner: "draw",
+			Reason: "both_disconnected",
+			Board:  gs.Game.Board,
+		}
+
+		conn.SendMessage(gs.Player1Username, game_over_message)
+		if !gs.IsBot() {
+			conn.SendMessage(gs.Player2Username, game_over_message)
+		}
+
+		return nil
+	}
+
+	// Only one player disconnected - start reconnect timer
 	disconnect_message := models.ServerMessage{
 		Type:    "opponent_disconnected",
 		Message: "Your opponent has disconnected. Waiting for reconnection...",
@@ -339,5 +377,63 @@ func (gs *GameSession) HandleReconnect(username string, conn ConnectionManagerIn
 
 	conn.SendMessage(username, reconnect_message)
 	conn.SendMessage(opponentUsername, opponent_reconnect_message)
+	return nil
+}
+
+func (gs *GameSession) TerminateSession(forfeitingPlayer string, reason string, conn ConnectionManagerInterface) error {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	if gs.Game.IsFinished() {
+		return nil // Already finished
+	}
+
+	gs.FinishedAt = time.Now()
+	gs.Reason = reason
+
+	// Stop any active reconnect timer
+	if gs.ReconnectTimer != nil {
+		gs.ReconnectTimer.Stop()
+		gs.ReconnectTimer = nil
+	}
+
+	// Determine winner (opponent of forfeiting player)
+	opponentUsername := gs.GetOpponentUsername(forfeitingPlayer)
+	winner := opponentUsername
+
+	// Special case: if opponent is BOT and player abandons, it's still a forfeit
+	if opponentUsername == models.BotUsername {
+		winner = models.BotUsername
+	}
+
+	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
+	err := db.SaveGame(
+		gs.GameID,
+		gs.Player1Username,
+		gs.Player2Username,
+		winner,
+		gs.Reason,
+		gs.Game.MoveCount,
+		duration,
+		gs.CreatedAt,
+		gs.FinishedAt,
+	)
+	if err != nil {
+		return err
+	}
+
+	game_over_message := models.ServerMessage{
+		Type:   "game_over",
+		GameID: gs.GameID,
+		Winner: winner,
+		Board:  gs.Game.Board,
+		Reason: reason,
+	}
+
+	conn.SendMessage(gs.Player1Username, game_over_message)
+	if !gs.IsBot() {
+		conn.SendMessage(gs.Player2Username, game_over_message)
+	}
+
 	return nil
 }
