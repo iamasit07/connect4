@@ -16,7 +16,8 @@ const Board: FC<BoardProps> = ({
   onColumnClick,
   gameOver,
 }) => {
-  const isYourTurn = !gameOver && yourPlayer !== null && currentTurn === yourPlayer;
+  const isYourTurn =
+    !gameOver && yourPlayer !== null && currentTurn === yourPlayer;
 
   const getCellColor = (cellValue: PlayerID): string => {
     if (cellValue === 0) return "bg-white";
@@ -27,9 +28,14 @@ const Board: FC<BoardProps> = ({
 
   const handleColumnClick = (col: number) => {
     console.log("Board column clicked:", col, "isYourTurn:", isYourTurn);
-    
+
     if (!isYourTurn) {
-      console.log("Not your turn! Your player:", yourPlayer, "Current turn:", currentTurn);
+      console.log(
+        "Not your turn! Your player:",
+        yourPlayer,
+        "Current turn:",
+        currentTurn
+      );
       return;
     }
 
@@ -48,15 +54,17 @@ const Board: FC<BoardProps> = ({
           key={col}
           onClick={() => handleColumnClick(col)}
           className={`flex flex-col gap-1 p-1 rounded ${
-            isYourTurn ? "cursor-pointer hover:bg-blue-500 transition" : "cursor-not-allowed"
+            isYourTurn
+              ? "cursor-pointer hover:bg-blue-500 transition"
+              : "cursor-not-allowed"
           }`}
         >
           {[0, 1, 2, 3, 4, 5].map((row) => (
             <div
               key={row}
-              className={`w-14 h-14 rounded-full border-2 border-blue-800 transition ${
-                getCellColor(board[row][col])
-              }`}
+              className={`w-14 h-14 rounded-full border-2 border-blue-800 transition ${getCellColor(
+                board[row][col]
+              )}`}
             />
           ))}
         </div>

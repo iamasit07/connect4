@@ -112,7 +112,10 @@ const useWebSocket = (): UseWebSocketReturn => {
       console.log("Sending message:", message);
       ws.current.send(JSON.stringify(message));
     } else {
-      console.error("Cannot send message - WebSocket not open. ReadyState:", ws.current?.readyState);
+      console.error(
+        "Cannot send message - WebSocket not open. ReadyState:",
+        ws.current?.readyState
+      );
     }
   };
 

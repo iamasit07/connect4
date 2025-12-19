@@ -1,9 +1,9 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Board from "../components/board";
 import useWebSocket from "../hooks/useWebSocket";
 
-const GamePage = () => {
+const GamePage: React.FC = () => {
   const { connected, gameState, joinQueue, makeMove } = useWebSocket();
   const navigate = useNavigate();
   const hasJoinedQueue = useRef(false);
@@ -19,7 +19,7 @@ const GamePage = () => {
     if (connected && !hasJoinedQueue.current) {
       console.log("Joining queue with username:", username);
       hasJoinedQueue.current = true;
-      
+
       // Small delay to ensure WebSocket is fully ready
       setTimeout(() => {
         joinQueue(username);
@@ -39,21 +39,19 @@ const GamePage = () => {
 
   if (!connected) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <p className="text-xl text-gray-700">Connecting to server...</p>
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <p className="text-gray-600">Connecting...</p>
       </div>
     );
   }
 
   if (gameState.inQueue) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center">
-          <p className="text-2xl text-gray-800 mb-2">
-            Searching for opponent...
-          </p>
-          <p className="text-sm text-gray-600">
-            Bot will join if no player found in 10 seconds
+          <p className="text-lg text-gray-800">Finding opponent...</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Bot joins after 10 seconds
           </p>
         </div>
       </div>
@@ -62,32 +60,42 @@ const GamePage = () => {
 
   if (!gameState.gameId) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <p className="text-xl text-gray-700">Waiting for game to start...</p>
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <p className="text-gray-600">Waiting...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 gap-4">
-      {/* Game Status */}
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-6 p-4">
       <div className="text-center">
         {gameState.gameOver ? (
-          <h2 className="text-3xl font-bold text-gray-800">
+          <h2 className="text-2xl font-bold text-gray-900">
             {gameState.winner === "draw"
-              ? "Game Draw!"
+              ? "Draw!"
               : `${gameState.winner} Wins!`}
           </h2>
         ) : (
-          <p className="text-xl text-gray-700">
-            {gameState.currentTurn === gameState.yourPlayer
-              ? "Your Turn"
-              : `${gameState.opponent}'s Turn`}
-          </p>
+          <div className="space-y-1">
+            <p className="text-lg font-medium text-gray-900">
+              {gameState.currentTurn === gameState.yourPlayer
+                ? "Your Turn"
+                : `${gameState.opponent}'s Turn`}
+            </p>
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+              <span className="flex items-center gap-1">
+                You:{" "}
+                <span className="inline-block w-4 h-4 rounded-full bg-yellow-400"></span>
+              </span>
+              <span className="flex items-center gap-1">
+                Opponent:{" "}
+                <span className="inline-block w-4 h-4 rounded-full bg-red-500"></span>
+              </span>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Game Board */}
       <Board
         board={gameState.board}
         yourPlayer={gameState.yourPlayer}
@@ -96,11 +104,10 @@ const GamePage = () => {
         gameOver={gameState.gameOver}
       />
 
-      {/* Play Again Button */}
       {gameState.gameOver && (
         <button
           onClick={handlePlayAgain}
-          className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold"
+          className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
         >
           Back to Home
         </button>

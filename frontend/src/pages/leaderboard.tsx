@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 
 interface PlayerStats {
   username: string;
-  gamesPlayed: number;
-  wins: number;
-  winRate: number;
+  games_played: number;
+  games_won: number;
+  win_rate: number;
 }
 
 const LeaderboardPage = () => {
@@ -16,18 +16,18 @@ const LeaderboardPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchleaderboard();
+    fetchLeaderboard();
   }, []);
 
-  const fetchleaderboard = async () => {
+  const fetchLeaderboard = async () => {
     try {
-      const response = await fetch("/api/leaderboard?limit=10");
+      const response = await fetch("http://localhost:8080/api/leaderboard?limit=10");
       if (!response.ok) {
         throw new Error("Failed to fetch leaderboard");
       }
 
       const data = await response.json();
-      setLeaderboard(data);
+      setLeaderboard(data || []);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -36,49 +36,70 @@ const LeaderboardPage = () => {
   };
 
   if (loading) {
-    return <div>Loading leaderboard...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <p className="text-gray-600">Loading...</p>
+      </div>
+    );
   }
 
   if (error) {
-    <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-      <p className="text-red-500">Error: {error}</p>
-      <button
-        onClick={fetchleaderboard}
-        className="px-4 py-2 bg-blue-500 text-white rounded"
-      >
-        Retry
-      </button>
-    </div>;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-4">
+        <p className="text-red-600">Error: {error}</p>
+        <button
+          onClick={fetchLeaderboard}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   return (
-    <div className="leaderboard-page">
-      <h1>Leaderboard</h1>
-      <table>
-        <thead>
-          <tr>
-            <th>Rank</th>
-            <th>Username</th>
-            <th>Games Played</th>
-            <th>Wins</th>
-            <th>Win Rate</th>
-          </tr>
-        </thead>
-        <tbody>
-          {leaderboard.map((player: PlayerStats, index: number) => (
-            <tr key={player.username}>
-              <td>{index + 1}</td>
-              <td>{player.username}</td>
-              <td>{player.gamesPlayed}</td>
-              <td>{player.wins}</td>
-              <td>{(player.winRate * 100).toFixed(2)}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="flex flex-col items-center min-h-screen py-8 bg-gray-50 px-4">
+      <h1 className="text-2xl font-bold mb-6 text-gray-900">Leaderboard</h1>
+
+      <div className="w-full max-w-2xl">
+        {leaderboard.length === 0 ? (
+          <p className="text-center text-gray-500">No games yet</p>
+        ) : (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-100 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Rank</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Player</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray- 700">Played</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Won</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Win %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {leaderboard.map((player, index) => (
+                  <tr key={player.username} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      {index === 0 && "🥇"}
+                      {index === 1 && "🥈"}
+                      {index === 2 && "🥉"}
+                      {index > 2 && `#${index + 1}`}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{player.username}</td>
+                    <td className="px-4 py-3 text-center text-gray-600">{player.games_played}</td>
+                    <td className="px-4 py-3 text-center text-gray-600">{player.games_won}</td>
+                    <td className="px-4 py-3 text-center font-medium text-blue-600">{player.win_rate}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <button
         onClick={() => navigate("/")}
-        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded"
+        className="mt-6 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
       >
         Back to Home
       </button>
