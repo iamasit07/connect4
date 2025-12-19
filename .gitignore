@@ -46,20 +46,6 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Yarn 2+ (Berry)
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
-.pnp.*
-
-# Package manager lock files (optional - uncomment if you want to ignore them)
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
-
 # ============================================
 # Environment Variables
 # ============================================
