@@ -21,7 +21,8 @@ const LeaderboardPage = () => {
 
   const fetchLeaderboard = async () => {
     try {
-      const response = await fetch("http://localhost:8080/api/leaderboard?limit=10");
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8080";
+      const response = await fetch(`${apiUrl}/api/leaderboard?limit=10`);
       if (!response.ok) {
         throw new Error("Failed to fetch leaderboard");
       }
@@ -69,11 +70,21 @@ const LeaderboardPage = () => {
             <table className="w-full">
               <thead className="bg-gray-100 border-b">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Rank</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Player</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray- 700">Played</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Won</th>
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">Win %</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                    Rank
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                    Player
+                  </th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray- 700">
+                    Played
+                  </th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+                    Won
+                  </th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">
+                    Win %
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -85,10 +96,18 @@ const LeaderboardPage = () => {
                       {index === 2 && "🥉"}
                       {index > 2 && `#${index + 1}`}
                     </td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{player.username}</td>
-                    <td className="px-4 py-3 text-center text-gray-600">{player.games_played}</td>
-                    <td className="px-4 py-3 text-center text-gray-600">{player.games_won}</td>
-                    <td className="px-4 py-3 text-center font-medium text-blue-600">{player.win_rate}%</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      {player.username}
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-600">
+                      {player.games_played}
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-600">
+                      {player.games_won}
+                    </td>
+                    <td className="px-4 py-3 text-center font-medium text-blue-600">
+                      {player.win_rate}%
+                    </td>
                   </tr>
                 ))}
               </tbody>

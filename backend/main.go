@@ -27,6 +27,10 @@ func main() {
 	}
 
 	dbUri := os.Getenv("DB_URI")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 
 	// db connection
 	err = db.InitDB(dbUri)
@@ -82,11 +86,11 @@ func main() {
 	})
 
 	httpServer := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + port,
 		Handler: middlewares.EnableCORS(mux),
 	}
 
-	fmt.Println("Server is listening on port 8080")
+	fmt.Printf("Server is listening on port %s\n", port)
 
 	err = httpServer.ListenAndServe()
 	if err != nil {

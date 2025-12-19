@@ -33,7 +33,8 @@ const useWebSocket = (): UseWebSocketReturn => {
   const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    ws.current = new WebSocket("ws://localhost:8080/ws");
+    const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
+    ws.current = new WebSocket(`${wsUrl}/ws`);
 
     ws.current.onopen = () => {
       console.log("WebSocket connected");
@@ -131,7 +132,11 @@ const useWebSocket = (): UseWebSocketReturn => {
   };
 
   const reconnect = (username?: string, gameID?: string) => {
-    sendMessage({ type: "reconnect", username: username || "", gameID: gameID || "" });
+    sendMessage({
+      type: "reconnect",
+      username: username || "",
+      gameID: gameID || "",
+    });
   };
 
   return {

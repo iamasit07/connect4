@@ -3,18 +3,27 @@ package websocket
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/websocket"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/server"
+	"github.com/joho/godotenv"
 )
 
-func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Request,
-	sessionManager *server.SessionManager, matchMakingQueue *models.MatchmakingQueue) {
+func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Request, sessionManager *server.SessionManager, matchMakingQueue *models.MatchmakingQueue) {
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found, using environment variables")
+	}
+
+	frontendURL := os.Getenv("FRONTEND_URL")
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			return true
+			origins := r.Header.Get("Origin")
+			return origins == frontendURL || origins == "http://localhost:3000"
 		},
 	}
 
@@ -131,7 +140,7 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, session
 	connManager *ConnectionManager, currentUsername *string, isAuthenticated *bool) {
 	gameID := message.GameID
 	username := message.Username
-	
+
 	// User must provide at least one: username or gameID
 	if gameID == "" && username == "" {
 		SendErrorMessage(conn, "invalid_input", "Please provide either username or game ID")
