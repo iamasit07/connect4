@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Board from "../components/board";
+import DisconnectNotification from "../components/DisconnectNotification";
 import useWebSocket from "../hooks/useWebSocket";
 
 const GamePage: React.FC = () => {
@@ -68,14 +69,14 @@ const GamePage: React.FC = () => {
   // Countdown timer for matchmaking queue
   useEffect(() => {
     if (gameState.inQueue && gameState.queuedAt) {
-      const interval = setInterval(() => {
+      const updateCountdown = () => {
         const elapsed = Math.floor((Date.now() - gameState.queuedAt!) / 1000);
         const remaining = Math.max(0, 10 - elapsed);
         setCountdown(remaining);
-        if (remaining === 0) {
-          clearInterval(interval);
-        }
-      }, 100);
+      };
+      
+      updateCountdown(); // Initial update
+      const interval = setInterval(updateCountdown, 1000);
       return () => clearInterval(interval);
     } else {
       setCountdown(null);
@@ -136,7 +137,7 @@ const GamePage: React.FC = () => {
   }
 
   return (
-    <div className={`flex flex-col items-center justify-center min-h-screen ${getBackgroundColor()} gap-6 p-4 transition-colors duration-300`}>
+    <div className={`flex flex-col items-center justify-center min-h-screen ${getBackgroundColor()} gap-6 p-4`}>
       {/* Game ID Display */}
       {gameState.gameId && (
         <div className="text-xs text-gray-500 font-mono">
@@ -146,12 +147,12 @@ const GamePage: React.FC = () => {
 
       {/* Turn Indicator Banner */}
       {!gameState.gameOver && gameState.currentTurn && (
-        <div className={`w-full max-w-md px-6 py-3 rounded-lg text-center font-bold text-lg shadow-md ${
+        <div className={`w-full max-w-md px-4 py-2 rounded text-center font-bold ${
           gameState.currentTurn === 1 
             ? "bg-yellow-400 text-yellow-900" 
             : "bg-red-500 text-white"
         }`}>
-          {gameState.currentTurn === 1 ? "🟡" : "🔴"} Player {gameState.currentTurn}'s Turn
+          Player {gameState.currentTurn}'s Turn
           {gameState.currentTurn === gameState.yourPlayer && " (You)"}
         </div>
       )}
@@ -166,17 +167,17 @@ const GamePage: React.FC = () => {
         ) : (
           <div className="space-y-2">
             {/* Color Legend */}
-            <div className="flex items-center justify-center gap-4 text-sm text-gray-700 bg-white px-4 py-2 rounded-lg shadow-sm">
+            <div className="flex items-center justify-center gap-4 text-sm text-gray-700 bg-white px-3 py-2 rounded border border-gray-200">
               <span className="flex items-center gap-2">
-                <span className="inline-block w-5 h-5 rounded-full bg-yellow-400 shadow-sm"></span>
-                <span className="font-medium">
+                <span className="inline-block w-4 h-4 rounded-full bg-yellow-400"></span>
+                <span>
                   Player 1 {gameState.yourPlayer === 1 && "(You)"}
                   {gameState.yourPlayer === 2 && `(${gameState.opponent})`}
                 </span>
               </span>
               <span className="flex items-center gap-2">
-                <span className="inline-block w-5 h-5 rounded-full bg-red-500 shadow-sm"></span>
-                <span className="font-medium">
+                <span className="inline-block w-4 h-4 rounded-full bg-red-500"></span>
+                <span>
                   Player 2 {gameState.yourPlayer === 2 && "(You)"}
                   {gameState.yourPlayer === 1 && `(${gameState.opponent})`}
                 </span>
@@ -202,6 +203,12 @@ const GamePage: React.FC = () => {
           Back to Home
         </button>
       )}
+
+      {/* Disconnect Notification */}
+      <DisconnectNotification
+        isDisconnected={gameState.opponentDisconnected}
+        disconnectedAt={gameState.disconnectedAt}
+      />
     </div>
   );
 };

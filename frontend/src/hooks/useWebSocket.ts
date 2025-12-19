@@ -29,6 +29,8 @@ const useWebSocket = (): UseWebSocketReturn => {
     reason: null,
     inQueue: false,
     queuedAt: null,
+    opponentDisconnected: false,
+    disconnectedAt: null,
   });
 
   const ws = useRef<WebSocket | null>(null);
@@ -80,13 +82,23 @@ const useWebSocket = (): UseWebSocketReturn => {
             winner: message.winner ?? null,
             reason: message.reason ?? null,
             board: message.board ?? prevState.board,
+            opponentDisconnected: false,
+            disconnectedAt: null,
           }));
           break;
         case "opponent_disconnected":
-          alert("Your opponent has disconnected. Waiting for connection...");
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            opponentDisconnected: true,
+            disconnectedAt: Date.now(),
+          }));
           break;
         case "opponent_reconnected":
-          alert("Your opponent has reconnected. The game will resume.");
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            opponentDisconnected: false,
+            disconnectedAt: null,
+          }));
           break;
         default:
           console.warn("Unhandled message type:", message.type);
