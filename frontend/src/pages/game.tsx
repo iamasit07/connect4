@@ -1,20 +1,46 @@
 import React, { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import Board from "../components/board";
+import DisconnectNotification from "../components/DisconnectNotification";
 import useWebSocket from "../hooks/useWebSocket";
 
 const GamePage: React.FC = () => {
+  const { gameID: urlGameID } = useParams<{ gameID: string }>();
   const { connected, gameState, joinQueue, makeMove, reconnect } =
     useWebSocket();
   const navigate = useNavigate();
   const hasJoinedQueue = useRef(false);
+  const [countdown, setCountdown] = React.useState<number | null>(null);
+
+  // Navigate to correct URL when game starts
+  useEffect(() => {
+    if (gameState.gameId && urlGameID !== gameState.gameId) {
+      navigate(`/game/${gameState.gameId}`, { replace: true });
+    }
+  }, [gameState.gameId, urlGameID, navigate]);
 
   useEffect(() => {
     const username = localStorage.getItem("username");
-    const gameID = localStorage.getItem("gameID");
+    const storedGameID = localStorage.getItem("gameID");
     const isReconnecting = localStorage.getItem("isReconnecting") === "true";
 
-    if (!username && !gameID) {
+    // If we have gameID in URL, treat it as reconnection
+    if (urlGameID && urlGameID !== "queue") {
+      if (!username) {
+        navigate("/");
+        return;
+      }
+      
+      if (connected && !hasJoinedQueue.current) {
+        hasJoinedQueue.current = true;
+        console.log("Attempting to reconnect with URL gameID:", { username, gameID: urlGameID });
+        reconnect(username, urlGameID);
+      }
+      return;
+    }
+
+    // Handle normal flow
+    if (!username && !storedGameID) {
       navigate("/");
       return;
     }
@@ -23,11 +49,11 @@ const GamePage: React.FC = () => {
       hasJoinedQueue.current = true;
 
       setTimeout(() => {
-        if (isReconnecting) {
-          console.log("Attempting to reconnect with:", { username, gameID });
+        if (isReconnecting && storedGameID) {
+          console.log("Attempting to reconnect with:", { username, gameID: storedGameID });
           localStorage.removeItem("isReconnecting");
           localStorage.removeItem("gameID");
-          reconnect(username || undefined, gameID || undefined);
+          reconnect(username || undefined, storedGameID);
         } else {
           if (!username) {
             navigate("/");
@@ -38,7 +64,24 @@ const GamePage: React.FC = () => {
         }
       }, 100);
     }
-  }, [connected, navigate, joinQueue, reconnect]);
+  }, [connected, navigate, joinQueue, reconnect, urlGameID]);
+
+  // Countdown timer for matchmaking queue
+  useEffect(() => {
+    if (gameState.inQueue && gameState.queuedAt) {
+      const updateCountdown = () => {
+        const elapsed = Math.floor((Date.now() - gameState.queuedAt!) / 1000);
+        const remaining = Math.max(0, 10 - elapsed);
+        setCountdown(remaining);
+      };
+      
+      updateCountdown(); // Initial update
+      const interval = setInterval(updateCountdown, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setCountdown(null);
+    }
+  }, [gameState.inQueue, gameState.queuedAt]);
 
   const handleColumnClick = (col: number) => {
     console.log("Column clicked:", col);
@@ -48,6 +91,14 @@ const GamePage: React.FC = () => {
   const handlePlayAgain = () => {
     localStorage.removeItem("username");
     navigate("/");
+  };
+
+  // Determine background color based on turn
+  const getBackgroundColor = () => {
+    if (gameState.gameOver) return "bg-gray-50";
+    if (gameState.currentTurn === 1) return "bg-yellow-50";
+    if (gameState.currentTurn === 2) return "bg-red-50";
+    return "bg-gray-50";
   };
 
   if (!connected) {
@@ -64,7 +115,13 @@ const GamePage: React.FC = () => {
         <div className="text-center">
           <p className="text-lg text-gray-800">Finding opponent...</p>
           <p className="text-sm text-gray-500 mt-2">
-            Bot joins after 10 seconds
+            {countdown !== null ? (
+              <span>
+                Bot joins in <span className="font-bold text-blue-600">{countdown} second</span>
+              </span>
+            ) : (
+              "Waiting..."
+            )}
           </p>
         </div>
       </div>
@@ -80,11 +137,23 @@ const GamePage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-6 p-4">
+    <div className={`flex flex-col items-center justify-center min-h-screen ${getBackgroundColor()} gap-6 p-4`}>
       {/* Game ID Display */}
       {gameState.gameId && (
         <div className="text-xs text-gray-500 font-mono">
           Game ID: {gameState.gameId}
+        </div>
+      )}
+
+      {/* Turn Indicator Banner */}
+      {!gameState.gameOver && gameState.currentTurn && (
+        <div className={`w-full max-w-md px-4 py-2 rounded text-center font-bold ${
+          gameState.currentTurn === 1 
+            ? "bg-yellow-400 text-yellow-900" 
+            : "bg-red-500 text-white"
+        }`}>
+          Player {gameState.currentTurn}'s Turn
+          {gameState.currentTurn === gameState.yourPlayer && " (You)"}
         </div>
       )}
 
@@ -96,20 +165,22 @@ const GamePage: React.FC = () => {
               : `${gameState.winner} Wins!`}
           </h2>
         ) : (
-          <div className="space-y-1">
-            <p className="text-lg font-medium text-gray-900">
-              {gameState.currentTurn === gameState.yourPlayer
-                ? "Your Turn"
-                : `${gameState.opponent}'s Turn`}
-            </p>
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-              <span className="flex items-center gap-1">
-                You:{" "}
+          <div className="space-y-2">
+            {/* Color Legend */}
+            <div className="flex items-center justify-center gap-4 text-sm text-gray-700 bg-white px-3 py-2 rounded border border-gray-200">
+              <span className="flex items-center gap-2">
                 <span className="inline-block w-4 h-4 rounded-full bg-yellow-400"></span>
+                <span>
+                  Player 1 {gameState.yourPlayer === 1 && "(You)"}
+                  {gameState.yourPlayer === 2 && `(${gameState.opponent})`}
+                </span>
               </span>
-              <span className="flex items-center gap-1">
-                Opponent:{" "}
+              <span className="flex items-center gap-2">
                 <span className="inline-block w-4 h-4 rounded-full bg-red-500"></span>
+                <span>
+                  Player 2 {gameState.yourPlayer === 2 && "(You)"}
+                  {gameState.yourPlayer === 1 && `(${gameState.opponent})`}
+                </span>
               </span>
             </div>
           </div>
@@ -132,6 +203,12 @@ const GamePage: React.FC = () => {
           Back to Home
         </button>
       )}
+
+      {/* Disconnect Notification */}
+      <DisconnectNotification
+        isDisconnected={gameState.opponentDisconnected}
+        disconnectedAt={gameState.disconnectedAt}
+      />
     </div>
   );
 };

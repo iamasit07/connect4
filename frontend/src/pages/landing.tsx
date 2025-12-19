@@ -18,7 +18,8 @@ const LandingPage = () => {
     }
 
     localStorage.setItem("username", username);
-    navigate("/game");
+    // Navigate to queue, will redirect to /game/{gameID} once game starts
+    navigate("/game/queue");
   };
 
   const handleReconnect = () => {
@@ -31,10 +32,13 @@ const LandingPage = () => {
       localStorage.setItem("username", reconnectUsername);
     }
     if (reconnectGameID) {
-      localStorage.setItem("gameID", reconnectGameID);
+      // Navigate directly to the game with gameID in URL
+      navigate(`/game/${reconnectGameID}`);
+    } else {
+      // If no gameID provided, go to queue
+      localStorage.setItem("isReconnecting", "true");
+      navigate("/game/queue");
     }
-    localStorage.setItem("isReconnecting", "true");
-    navigate("/game");
   };
 
   return (
@@ -72,20 +76,20 @@ const LandingPage = () => {
             Reconnect to Game
           </h2>
           <p className="text-xs text-gray-600 mb-3">
-            Enter either your username OR game ID (within 30 seconds)
+            Enter your Game ID to reconnect (check your game URL)
           </p>
           <input
             type="text"
-            placeholder="Enter your username (optional)"
-            value={reconnectUsername}
-            onChange={(e) => setReconnectUsername(e.target.value)}
+            placeholder="Enter Game ID (from URL)"
+            value={reconnectGameID}
+            onChange={(e) => setReconnectGameID(e.target.value)}
             className="w-full px-4 py-2 border border-green-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 mb-2"
           />
           <input
             type="text"
-            placeholder="OR enter Game ID (optional)"
-            value={reconnectGameID}
-            onChange={(e) => setReconnectGameID(e.target.value)}
+            placeholder="Enter your username"
+            value={reconnectUsername}
+            onChange={(e) => setReconnectUsername(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleReconnect()}
             className="w-full px-4 py-2 border border-green-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 mb-3"
           />
