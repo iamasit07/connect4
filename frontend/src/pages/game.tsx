@@ -1,20 +1,44 @@
 import React, { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import Board from "../components/board";
 import useWebSocket from "../hooks/useWebSocket";
 
 const GamePage: React.FC = () => {
+  const { gameID: urlGameID } = useParams<{ gameID: string }>();
   const { connected, gameState, joinQueue, makeMove, reconnect } =
     useWebSocket();
   const navigate = useNavigate();
   const hasJoinedQueue = useRef(false);
 
+  // Navigate to correct URL when game starts
+  useEffect(() => {
+    if (gameState.gameId && urlGameID !== gameState.gameId) {
+      navigate(`/game/${gameState.gameId}`, { replace: true });
+    }
+  }, [gameState.gameId, urlGameID, navigate]);
+
   useEffect(() => {
     const username = localStorage.getItem("username");
-    const gameID = localStorage.getItem("gameID");
+    const storedGameID = localStorage.getItem("gameID");
     const isReconnecting = localStorage.getItem("isReconnecting") === "true";
 
-    if (!username && !gameID) {
+    // If we have gameID in URL, treat it as reconnection
+    if (urlGameID && urlGameID !== "queue") {
+      if (!username) {
+        navigate("/");
+        return;
+      }
+      
+      if (connected && !hasJoinedQueue.current) {
+        hasJoinedQueue.current = true;
+        console.log("Attempting to reconnect with URL gameID:", { username, gameID: urlGameID });
+        reconnect(username, urlGameID);
+      }
+      return;
+    }
+
+    // Handle normal flow
+    if (!username && !storedGameID) {
       navigate("/");
       return;
     }
@@ -23,11 +47,11 @@ const GamePage: React.FC = () => {
       hasJoinedQueue.current = true;
 
       setTimeout(() => {
-        if (isReconnecting) {
-          console.log("Attempting to reconnect with:", { username, gameID });
+        if (isReconnecting && storedGameID) {
+          console.log("Attempting to reconnect with:", { username, gameID: storedGameID });
           localStorage.removeItem("isReconnecting");
           localStorage.removeItem("gameID");
-          reconnect(username || undefined, gameID || undefined);
+          reconnect(username || undefined, storedGameID);
         } else {
           if (!username) {
             navigate("/");
@@ -38,7 +62,7 @@ const GamePage: React.FC = () => {
         }
       }, 100);
     }
-  }, [connected, navigate, joinQueue, reconnect]);
+  }, [connected, navigate, joinQueue, reconnect, urlGameID]);
 
   const handleColumnClick = (col: number) => {
     console.log("Column clicked:", col);
