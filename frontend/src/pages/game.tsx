@@ -9,6 +9,7 @@ const GamePage: React.FC = () => {
     useWebSocket();
   const navigate = useNavigate();
   const hasJoinedQueue = useRef(false);
+  const [countdown, setCountdown] = React.useState<number | null>(null);
 
   // Navigate to correct URL when game starts
   useEffect(() => {
@@ -64,6 +65,23 @@ const GamePage: React.FC = () => {
     }
   }, [connected, navigate, joinQueue, reconnect, urlGameID]);
 
+  // Countdown timer for matchmaking queue
+  useEffect(() => {
+    if (gameState.inQueue && gameState.queuedAt) {
+      const interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - gameState.queuedAt!) / 1000);
+        const remaining = Math.max(0, 10 - elapsed);
+        setCountdown(remaining);
+        if (remaining === 0) {
+          clearInterval(interval);
+        }
+      }, 100);
+      return () => clearInterval(interval);
+    } else {
+      setCountdown(null);
+    }
+  }, [gameState.inQueue, gameState.queuedAt]);
+
   const handleColumnClick = (col: number) => {
     console.log("Column clicked:", col);
     makeMove(col);
@@ -72,6 +90,14 @@ const GamePage: React.FC = () => {
   const handlePlayAgain = () => {
     localStorage.removeItem("username");
     navigate("/");
+  };
+
+  // Determine background color based on turn
+  const getBackgroundColor = () => {
+    if (gameState.gameOver) return "bg-gray-50";
+    if (gameState.currentTurn === 1) return "bg-yellow-50";
+    if (gameState.currentTurn === 2) return "bg-red-50";
+    return "bg-gray-50";
   };
 
   if (!connected) {
@@ -88,7 +114,13 @@ const GamePage: React.FC = () => {
         <div className="text-center">
           <p className="text-lg text-gray-800">Finding opponent...</p>
           <p className="text-sm text-gray-500 mt-2">
-            Bot joins after 10 seconds
+            {countdown !== null ? (
+              <span>
+                Bot joins in <span className="font-bold text-blue-600">{countdown} second</span>
+              </span>
+            ) : (
+              "Waiting..."
+            )}
           </p>
         </div>
       </div>
@@ -104,11 +136,23 @@ const GamePage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 gap-6 p-4">
+    <div className={`flex flex-col items-center justify-center min-h-screen ${getBackgroundColor()} gap-6 p-4 transition-colors duration-300`}>
       {/* Game ID Display */}
       {gameState.gameId && (
         <div className="text-xs text-gray-500 font-mono">
           Game ID: {gameState.gameId}
+        </div>
+      )}
+
+      {/* Turn Indicator Banner */}
+      {!gameState.gameOver && gameState.currentTurn && (
+        <div className={`w-full max-w-md px-6 py-3 rounded-lg text-center font-bold text-lg shadow-md ${
+          gameState.currentTurn === 1 
+            ? "bg-yellow-400 text-yellow-900" 
+            : "bg-red-500 text-white"
+        }`}>
+          {gameState.currentTurn === 1 ? "🟡" : "🔴"} Player {gameState.currentTurn}'s Turn
+          {gameState.currentTurn === gameState.yourPlayer && " (You)"}
         </div>
       )}
 
@@ -120,20 +164,22 @@ const GamePage: React.FC = () => {
               : `${gameState.winner} Wins!`}
           </h2>
         ) : (
-          <div className="space-y-1">
-            <p className="text-lg font-medium text-gray-900">
-              {gameState.currentTurn === gameState.yourPlayer
-                ? "Your Turn"
-                : `${gameState.opponent}'s Turn`}
-            </p>
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-              <span className="flex items-center gap-1">
-                You:{" "}
-                <span className="inline-block w-4 h-4 rounded-full bg-yellow-400"></span>
+          <div className="space-y-2">
+            {/* Color Legend */}
+            <div className="flex items-center justify-center gap-4 text-sm text-gray-700 bg-white px-4 py-2 rounded-lg shadow-sm">
+              <span className="flex items-center gap-2">
+                <span className="inline-block w-5 h-5 rounded-full bg-yellow-400 shadow-sm"></span>
+                <span className="font-medium">
+                  Player 1 {gameState.yourPlayer === 1 && "(You)"}
+                  {gameState.yourPlayer === 2 && `(${gameState.opponent})`}
+                </span>
               </span>
-              <span className="flex items-center gap-1">
-                Opponent:{" "}
-                <span className="inline-block w-4 h-4 rounded-full bg-red-500"></span>
+              <span className="flex items-center gap-2">
+                <span className="inline-block w-5 h-5 rounded-full bg-red-500 shadow-sm"></span>
+                <span className="font-medium">
+                  Player 2 {gameState.yourPlayer === 2 && "(You)"}
+                  {gameState.yourPlayer === 1 && `(${gameState.opponent})`}
+                </span>
               </span>
             </div>
           </div>

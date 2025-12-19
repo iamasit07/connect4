@@ -21,8 +21,8 @@ const Board: FC<BoardProps> = ({
 
   const getCellColor = (cellValue: PlayerID): string => {
     if (cellValue === 0) return "bg-white";
-    if (cellValue === 1) return "bg-red-500 shadow-md"; // Red for player 1
-    if (cellValue === 2) return "bg-yellow-400 shadow-md"; // Yellow for player 2
+    if (cellValue === 1) return "bg-yellow-400 shadow-md"; // Yellow for player 1
+    if (cellValue === 2) return "bg-red-500 shadow-md"; // Red for player 2
     return "";
   };
 

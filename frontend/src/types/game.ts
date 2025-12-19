@@ -10,6 +10,7 @@ export interface GameState {
   winner: string | null;
   reason: string | null;
   inQueue: boolean;
+  queuedAt: number | null; // Timestamp when joined queue
 }
 
 export interface ServerMessage {

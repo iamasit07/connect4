@@ -28,6 +28,7 @@ const useWebSocket = (): UseWebSocketReturn => {
     winner: null,
     reason: null,
     inQueue: false,
+    queuedAt: null,
   });
 
   const ws = useRef<WebSocket | null>(null);
@@ -50,6 +51,7 @@ const useWebSocket = (): UseWebSocketReturn => {
           setGameState((prevState: GameState) => ({
             ...prevState,
             inQueue: true,
+            queuedAt: Date.now(),
           }));
           break;
         case "game_start":
