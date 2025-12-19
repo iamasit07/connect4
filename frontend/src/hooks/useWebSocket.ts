@@ -33,7 +33,7 @@ const useWebSocket = (): UseWebSocketReturn => {
   const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
+    const wsUrl = "wss://four-in-a-row-backend-tnan.onrender.com";
     ws.current = new WebSocket(`${wsUrl}/ws`);
 
     ws.current.onopen = () => {
