@@ -53,8 +53,8 @@ func SaveGame(gameID, player1, player2, winner, reason string, totalMoves, durat
 	}
 
 	query := `
-	INSERT INTO games (game_id, player1, player2, winner, reason, total_moves, duration_seconds, created_at, finished_at)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+	INSERT INTO game (id, game_id, player1_username, player2_username, winner, reason, total_moves, duration_seconds, created_at, finished_at)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 	`
 
 	_, err = tx.Exec(query, gameID, player1, player2, winner, reason, totalMoves, durationSeconds, createdAt, finishedAt)

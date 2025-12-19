@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS players (
     games_played INT DEFAULT 0,
     games_won INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW()
-)
+);
 
 CREATE TABLE IF NOT EXISTS game (
     id VARCHAR(32) PRIMARY KEY,
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS game (
     duration_seconds INT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     finished_at TIMESTAMP NOT NULL
-)
+);
 
 CREATE INDEX IF NOT EXISTS idx_players_username ON players(username);
 CREATE INDEX IF NOT EXISTS idx_players_games_won ON players(games_won DESC);

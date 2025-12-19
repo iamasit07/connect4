@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -19,6 +20,12 @@ func InitDB(connStr string) error {
 
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("unable to connect to database: %v", err)
+	}
+
+	schema, _ := os.ReadFile("db/schema.sql")
+	_, err = db.Exec(string(schema))
+	if err != nil {
+		return fmt.Errorf("failed to initialize database schema: %v", err)
 	}
 
 	db.SetMaxOpenConns(25)
