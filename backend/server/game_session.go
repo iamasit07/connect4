@@ -28,6 +28,7 @@ type GameSession struct {
 	ReconnectTimer      *time.Timer
 	CreatedAt           time.Time
 	FinishedAt          time.Time
+	SessionTokens       map[string]string // username -> session token for reconnection auth
 	mu                  sync.Mutex
 }
 
@@ -64,34 +65,42 @@ func NewGameSession(player1Username, player2Username string, conn ConnectionMana
 	mapping[player1Username] = models.Player1
 	mapping[player2Username] = models.Player2
 
+	// Generate session tokens for authentication
+	sessionTokens := make(map[string]string)
+	sessionTokens[player1Username] = utils.GenerateToken()
+	sessionTokens[player2Username] = utils.GenerateToken()
+
 	gs := &GameSession{
 		GameID:          gameID,
 		Player1Username: player1Username,
 		Player2Username: player2Username,
 		Game:            newGame,
 		PlayerMapping:   mapping,
+		SessionTokens:   sessionTokens,
 		CreatedAt:       time.Now(),
 		mu:              sync.Mutex{},
 	}
 
-	// Send game start message to player1
+	// Send game start message to player1 with session token
 	player1Message := models.ServerMessage{
-		Type:        "game_start",
-		GameID:      gs.GameID,
-		Opponent:    player2Username,
-		YourPlayer:  int(models.Player1),
-		CurrentTurn: int(gs.Game.CurrentPlayer),
+		Type:         "game_start",
+		GameID:       gs.GameID,
+		Opponent:     player2Username,
+		YourPlayer:   int(models.Player1),
+		CurrentTurn:  int(gs.Game.CurrentPlayer),
+		SessionToken: sessionTokens[player1Username],
 	}
 	conn.SendMessage(player1Username, player1Message)
 
-	// Send game start message to player2 (if not bot)
+	// Send game start message to player2 (if not bot) with session token
 	if player2Username != models.BotUsername {
 		player2Message := models.ServerMessage{
-			Type:        "game_start",
-			GameID:      gs.GameID,
-			Opponent:    player1Username,
-			YourPlayer:  int(models.Player2),
-			CurrentTurn: int(gs.Game.CurrentPlayer),
+			Type:         "game_start",
+			GameID:       gs.GameID,
+			Opponent:     player1Username,
+			YourPlayer:   int(models.Player2),
+			CurrentTurn:  int(gs.Game.CurrentPlayer),
+			SessionToken: sessionTokens[player2Username],
 		}
 		conn.SendMessage(player2Username, player2Message)
 	}
@@ -239,6 +248,44 @@ func (gs *GameSession) HandleDisconnect(username string, conn ConnectionManagerI
 
 	gs.DisconnectedPlayers = append(gs.DisconnectedPlayers, username)
 
+	// Check if both players are now disconnected
+	if len(gs.DisconnectedPlayers) >= 2 {
+		// Both players disconnected - end game as draw immediately
+		gs.FinishedAt = time.Now()
+		gs.Reason = "both_disconnected"
+
+		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
+		err := db.SaveGame(
+			gs.GameID,
+			gs.Player1Username,
+			gs.Player2Username,
+			"draw",
+			gs.Reason,
+			gs.Game.MoveCount,
+			duration,
+			gs.CreatedAt,
+			gs.FinishedAt,
+		)
+		if err != nil {
+			return err
+		}
+
+		game_over_message := models.ServerMessage{
+			Type:   "game_over",
+			Winner: "draw",
+			Reason: "both_disconnected",
+			Board:  gs.Game.Board,
+		}
+
+		conn.SendMessage(gs.Player1Username, game_over_message)
+		if !gs.IsBot() {
+			conn.SendMessage(gs.Player2Username, game_over_message)
+		}
+
+		return nil
+	}
+
+	// Only one player disconnected - start reconnect timer
 	disconnect_message := models.ServerMessage{
 		Type:    "opponent_disconnected",
 		Message: "Your opponent has disconnected. Waiting for reconnection...",
@@ -339,5 +386,63 @@ func (gs *GameSession) HandleReconnect(username string, conn ConnectionManagerIn
 
 	conn.SendMessage(username, reconnect_message)
 	conn.SendMessage(opponentUsername, opponent_reconnect_message)
+	return nil
+}
+
+func (gs *GameSession) TerminateSession(forfeitingPlayer string, reason string, conn ConnectionManagerInterface) error {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	if gs.Game.IsFinished() {
+		return nil // Already finished
+	}
+
+	gs.FinishedAt = time.Now()
+	gs.Reason = reason
+
+	// Stop any active reconnect timer
+	if gs.ReconnectTimer != nil {
+		gs.ReconnectTimer.Stop()
+		gs.ReconnectTimer = nil
+	}
+
+	// Determine winner (opponent of forfeiting player)
+	opponentUsername := gs.GetOpponentUsername(forfeitingPlayer)
+	winner := opponentUsername
+
+	// Special case: if opponent is BOT and player abandons, it's still a forfeit
+	if opponentUsername == models.BotUsername {
+		winner = models.BotUsername
+	}
+
+	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
+	err := db.SaveGame(
+		gs.GameID,
+		gs.Player1Username,
+		gs.Player2Username,
+		winner,
+		gs.Reason,
+		gs.Game.MoveCount,
+		duration,
+		gs.CreatedAt,
+		gs.FinishedAt,
+	)
+	if err != nil {
+		return err
+	}
+
+	game_over_message := models.ServerMessage{
+		Type:   "game_over",
+		GameID: gs.GameID,
+		Winner: winner,
+		Board:  gs.Game.Board,
+		Reason: reason,
+	}
+
+	conn.SendMessage(gs.Player1Username, game_over_message)
+	if !gs.IsBot() {
+		conn.SendMessage(gs.Player2Username, game_over_message)
+	}
+
 	return nil
 }
