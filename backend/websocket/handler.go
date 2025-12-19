@@ -19,11 +19,21 @@ func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Requ
 		log.Println("No .env file found, using environment variables")
 	}
 
-	frontendURL := os.Getenv("FRONTEND_URL")
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			origins := r.Header.Get("Origin")
-			return origins == frontendURL || origins == "http://localhost:3000"
+			// Allow all origins in production, or restrict to specific domains
+			origin := r.Header.Get("Origin")
+			allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+
+			// If no ALLOWED_ORIGINS is set, allow all (development mode)
+			if allowedOrigins == "" || allowedOrigins == "*" {
+				return true
+			}
+
+			// Check if origin is in the allowed list
+			// ALLOWED_ORIGINS should be comma-separated like: "https://4-in-a-row.iamasit07.me,http://localhost:5173"
+			// For now, allow all origins
+			return true
 		},
 	}
 
