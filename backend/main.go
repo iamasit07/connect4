@@ -2,10 +2,15 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/joho/godotenv"
+
+	"github.com/iamasit07/4-in-a-row/backend/db"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/server"
 	"github.com/iamasit07/4-in-a-row/backend/websocket"
@@ -13,6 +18,20 @@ import (
 
 func main() {
 	fmt.Println("Starting 4-in-a-row backend server...")
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
+
+	dbUri := os.Getenv("DB_URI")
+
+	// db connection
+	err = db.InitDB(dbUri)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.CloseDB()
 
 	connectionManager := websocket.NewConnectionManager()
 
@@ -50,7 +69,7 @@ func main() {
 
 	fmt.Println("Server is listening on port 8080")
 
-	err := httpServer.ListenAndServe()
+	err = httpServer.ListenAndServe()
 	if err != nil {
 		fmt.Println("Error starting server:", err)
 	}
