@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/iamasit07/4-in-a-row/backend/db"
+	"github.com/iamasit07/4-in-a-row/backend/middlewares"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/server"
 	"github.com/iamasit07/4-in-a-row/backend/websocket"
@@ -62,9 +64,26 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
+	mux.HandleFunc("/api/leaderboard", func(w http.ResponseWriter, r *http.Request) {
+		limitSetter := r.URL.Query().Get("limit")
+		limit := 10
+		if limitSetter != "" {
+			fmt.Sscan(limitSetter, &limit)
+		}
+
+		leaderboard, err := db.GetLeaderboard(limit)
+		if err != nil {
+			http.Error(w, "Failed to fetch leaderboard", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(leaderboard)
+	})
+
 	httpServer := &http.Server{
 		Addr:    ":8080",
-		Handler: mux,
+		Handler: middlewares.EnableCORS(mux),
 	}
 
 	fmt.Println("Server is listening on port 8080")
