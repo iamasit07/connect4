@@ -158,10 +158,11 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, session
 	connManager *ConnectionManager, currentUsername *string, isAuthenticated *bool) {
 	gameID := message.GameID
 	username := message.Username
+	token := message.Token
 
-	// SECURITY CHECK 1: Require BOTH gameID and username
-	if gameID == "" || username == "" {
-		SendErrorMessage(conn, "invalid_input", "Both game ID and username are required for reconnection")
+	// SECURITY CHECK 1: Require gameID, username, AND token
+	if gameID == "" || username == "" || token == "" {
+		SendErrorMessage(conn, "invalid_input", "Game ID, username, and session token are required for reconnection")
 		return
 	}
 
@@ -203,6 +204,13 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, session
 
 	if !isDisconnected {
 		SendErrorMessage(conn, "not_disconnected", "You are not disconnected from this game")
+		return
+	}
+
+	// SECURITY CHECK 6: Verify session token matches
+	expectedToken, hasToken := session.SessionTokens[username]
+	if !hasToken || expectedToken != token {
+		SendErrorMessage(conn, "invalid_token", "Invalid session token")
 		return
 	}
 

@@ -28,6 +28,7 @@ type GameSession struct {
 	ReconnectTimer      *time.Timer
 	CreatedAt           time.Time
 	FinishedAt          time.Time
+	SessionTokens       map[string]string // username -> session token for reconnection auth
 	mu                  sync.Mutex
 }
 
@@ -64,34 +65,42 @@ func NewGameSession(player1Username, player2Username string, conn ConnectionMana
 	mapping[player1Username] = models.Player1
 	mapping[player2Username] = models.Player2
 
+	// Generate session tokens for authentication
+	sessionTokens := make(map[string]string)
+	sessionTokens[player1Username] = utils.GenerateToken()
+	sessionTokens[player2Username] = utils.GenerateToken()
+
 	gs := &GameSession{
 		GameID:          gameID,
 		Player1Username: player1Username,
 		Player2Username: player2Username,
 		Game:            newGame,
 		PlayerMapping:   mapping,
+		SessionTokens:   sessionTokens,
 		CreatedAt:       time.Now(),
 		mu:              sync.Mutex{},
 	}
 
-	// Send game start message to player1
+	// Send game start message to player1 with session token
 	player1Message := models.ServerMessage{
-		Type:        "game_start",
-		GameID:      gs.GameID,
-		Opponent:    player2Username,
-		YourPlayer:  int(models.Player1),
-		CurrentTurn: int(gs.Game.CurrentPlayer),
+		Type:         "game_start",
+		GameID:       gs.GameID,
+		Opponent:     player2Username,
+		YourPlayer:   int(models.Player1),
+		CurrentTurn:  int(gs.Game.CurrentPlayer),
+		SessionToken: sessionTokens[player1Username],
 	}
 	conn.SendMessage(player1Username, player1Message)
 
-	// Send game start message to player2 (if not bot)
+	// Send game start message to player2 (if not bot) with session token
 	if player2Username != models.BotUsername {
 		player2Message := models.ServerMessage{
-			Type:        "game_start",
-			GameID:      gs.GameID,
-			Opponent:    player1Username,
-			YourPlayer:  int(models.Player2),
-			CurrentTurn: int(gs.Game.CurrentPlayer),
+			Type:         "game_start",
+			GameID:       gs.GameID,
+			Opponent:     player1Username,
+			YourPlayer:   int(models.Player2),
+			CurrentTurn:  int(gs.Game.CurrentPlayer),
+			SessionToken: sessionTokens[player2Username],
 		}
 		conn.SendMessage(player2Username, player2Message)
 	}
