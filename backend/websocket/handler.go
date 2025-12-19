@@ -21,18 +21,10 @@ func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Requ
 
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			// Allow all origins in production, or restrict to specific domains
-			origin := r.Header.Get("Origin")
 			allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
-
-			// If no ALLOWED_ORIGINS is set, allow all (development mode)
 			if allowedOrigins == "" || allowedOrigins == "*" {
-				return true
+				return false
 			}
-
-			// Check if origin is in the allowed list
-			// ALLOWED_ORIGINS should be comma-separated like: "https://4-in-a-row.iamasit07.me,http://localhost:5173"
-			// For now, allow all origins
 			return true
 		},
 	}
