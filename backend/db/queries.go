@@ -122,3 +122,14 @@ func GetLeaderboard(limit int) ([]PlayerStats, error) {
 
 	return leaderboard, nil
 }
+
+// GameExists checks if a game with the given gameID exists in the database
+func GameExists(gameID string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM game WHERE game_id = $1);`
+	var exists bool
+	err := DB.QueryRow(query, gameID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if game exists: %v", err)
+	}
+	return exists, nil
+}

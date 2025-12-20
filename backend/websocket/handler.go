@@ -8,11 +8,12 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/iamasit07/4-in-a-row/backend/config"
+	"github.com/iamasit07/4-in-a-row/backend/db"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/server"
 )
 
-func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Request, sessionManager *server.SessionManager, matchMakingQueue *models.MatchmakingQueue) {
+func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Request, sessionManager *server.SessionManager, matchMakingQueue *models.MatchmakingQueue, tokenManager *TokenManager) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			// Allow all origins configured in config (production URL + localhost)
@@ -62,7 +63,7 @@ func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Requ
 
 		switch clientMessage.Type {
 		case "join_queue":
-			HandleJoinQueue(clientMessage, conn, cm, matchMakingQueue, sessionManager, &currentUsername, &isAuthenticated)
+			HandleJoinQueue(clientMessage, conn, cm, matchMakingQueue, sessionManager, tokenManager, &currentUsername, &isAuthenticated)
 		case "make_move":
 			HandleMakeMove(clientMessage, currentUsername, &isAuthenticated, conn, sessionManager, cm)
 		case "reconnect":
@@ -74,7 +75,7 @@ func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Requ
 }
 
 func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
-	connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, sessionManager *server.SessionManager, currentUsername *string, isAuthenticated *bool) {
+	connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, sessionManager *server.SessionManager, tokenManager *TokenManager, currentUsername *string, isAuthenticated *bool) {
 	if message.Username == "" {
 		SendErrorMessage(conn, "invalid_username", "Username cannot be empty")
 		return
@@ -88,10 +89,24 @@ func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
 	*currentUsername = message.Username
 	*isAuthenticated = true
 
-	// Check for existing active session
+	// Handle persistent user token
+	userToken := message.UserToken
+	if userToken == "" {
+		// No token provided, generate new one
+		userToken = tokenManager.GenerateUserToken()
+		log.Printf("[TOKEN] Generated new user token for %s: %s", *currentUsername, userToken)
+	} else {
+		log.Printf("[TOKEN] User %s provided existing token: %s", *currentUsername, userToken)
+	}
+
+	// Map token to username
+	tokenManager.SetTokenUsername(userToken, *currentUsername)
+
+	// Check for existing active session by username
 	session, exists := sessionManager.GetSessionByPlayer(*currentUsername)
 	if exists && !session.Game.IsFinished() {
-		// Player is abandoning an active game - terminate it
+		// Player is abandoning an active game - terminate it immediately
+		log.Printf("[ABANDON] Player %s is abandoning game %s to join new queue", *currentUsername, session.GameID)
 		err := session.TerminateSession(*currentUsername, "abandoned", connManager)
 		if err != nil {
 			log.Printf("Failed to terminate abandoned session: %v", err)
@@ -120,8 +135,9 @@ func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
 	}
 
 	response := models.ServerMessage{
-		Type:    "queue_joined",
-		Message: "Successfully joined the matchmaking queue... (Bot will join automatically if no opponent found in 10 seconds)",
+		Type:      "queue_joined",
+		Message:   "Successfully joined the matchmaking queue... (Bot will join automatically if no opponent found in 10 seconds)",
+		UserToken: userToken, // Send token back to client
 	}
 
 	responseData, _ := json.Marshal(response)
@@ -157,18 +173,33 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, session
 	connManager *ConnectionManager, currentUsername *string, isAuthenticated *bool) {
 	gameID := message.GameID
 	username := message.Username
-	token := message.Token
+	userToken := message.UserToken
 
-	// SECURITY CHECK 1: Require gameID, username, AND token
-	if gameID == "" || username == "" || token == "" {
-		SendErrorMessage(conn, "invalid_input", "Game ID, username, and session token are required for reconnection")
+	// SECURITY CHECK 1: Require gameID, username, AND userToken
+	if gameID == "" || username == "" || userToken == "" {
+		SendErrorMessage(conn, "invalid_input", "Game ID, username, and user token are required for reconnection")
 		return
 	}
 
 	// Find session by gameID
 	session, exists := sessionManager.GetSessionByGameID(gameID)
 	if !exists {
-		SendErrorMessage(conn, "no_active_game", "No active game found with this ID")
+		// Check if game exists in database (finished game)
+		gameExistsInDB, err := db.GameExists(gameID)
+		if err != nil {
+			log.Printf("[RECONNECT] Error checking database for gameID %s: %v", gameID, err)
+			SendErrorMessage(conn, "no_active_game", "No active game found with this ID")
+			return
+		}
+		
+		if gameExistsInDB {
+			// Game finished and saved to database
+			log.Printf("[RECONNECT] Game %s exists in database (finished) - sending game_finished error", gameID)
+			SendErrorMessage(conn, "game_finished", "This game has already ended")
+		} else {
+			log.Printf("[RECONNECT] Game %s not found anywhere - sending no_active_game error", gameID)
+			SendErrorMessage(conn, "no_active_game", "No active game found with this ID")
+		}
 		return
 	}
 
@@ -206,10 +237,10 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, session
 		return
 	}
 
-	// SECURITY CHECK 6: Verify session token matches
-	expectedToken, hasToken := session.SessionTokens[username]
-	if !hasToken || expectedToken != token {
-		SendErrorMessage(conn, "invalid_token", "Invalid session token")
+	// SECURITY CHECK 6: Verify user token matches
+	expectedToken, hasToken := session.UserTokens[username]
+	if !hasToken || expectedToken != userToken {
+		SendErrorMessage(conn, "invalid_token", "Invalid user token")
 		return
 	}
 
@@ -229,7 +260,7 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, session
 func HandleDisconnectCleanUp(username string, sessionManager *server.SessionManager, connManager *ConnectionManager) {
 	session, exists := sessionManager.GetSessionByPlayer(username)
 	if exists {
-		session.HandleDisconnect(username, connManager)
+		session.HandleDisconnect(username, connManager, sessionManager)
 	}
 	connManager.RemoveConnection(username)
 }

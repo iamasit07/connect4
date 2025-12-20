@@ -13,6 +13,8 @@ export interface GameState {
   queuedAt: number | null; // Timestamp when joined queue
   opponentDisconnected: boolean;
   disconnectedAt: number | null; // Timestamp when opponent disconnected
+  matchEnded: boolean; // True when trying to reconnect to terminated session
+  matchEndedAt: number | null; // Timestamp when match ended error received
 }
 
 export interface ServerMessage {
@@ -29,7 +31,7 @@ export interface ServerMessage {
   winner?: string;
   reason?: string;
   message?: string;
-  sessionToken?: string; // Token for reconnection authentication
+  userToken?: string;    // Persistent user token
 }
 
 export interface ClientMessage {
@@ -37,5 +39,5 @@ export interface ClientMessage {
   username?: string;
   gameID?: string;
   column?: number;
-  token?: string; // Session token for reconnection
+  userToken?: string;  // Persistent user token for auth & tracking
 }

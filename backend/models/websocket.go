@@ -1,11 +1,11 @@
 package models
 
 type ClientMessage struct {
-	Type     string `json:"type"`
-	Username string `json:"username"`
-	GameID   string `json:"gameId"`
-	Column   int    `json:"column"`
-	Token    string `json:"token,omitempty"` // Session token for reconnection
+	Type      string `json:"type"`
+	Username  string `json:"username"`
+	GameID    string `json:"gameId"`
+	Column    int    `json:"column"`
+	UserToken string `json:"userToken,omitempty"` // Persistent user token for auth & tracking
 }
 
 type ServerMessage struct {
@@ -23,7 +23,7 @@ type ServerMessage struct {
 	Winner        string       `json:"winner,omitempty"`        // username or "draw"
 	Reason        string       `json:"reason,omitempty"`
 	TimeRemaining int          `json:"timeRemaining,omitempty"`
-	SessionToken  string       `json:"sessionToken,omitempty"`  // Token for reconnection authentication
+	UserToken     string       `json:"userToken,omitempty"`    // Persistent user token for auth
 }
 
 type ErrorMessage struct {

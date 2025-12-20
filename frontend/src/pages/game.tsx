@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Board from "../components/board";
 import DisconnectNotification from "../components/DisconnectNotification";
+import MatchEndedNotification from "../components/MatchEndedNotification";
 import useWebSocket from "../hooks/useWebSocket";
 
 const GamePage: React.FC = () => {
@@ -22,7 +23,6 @@ const GamePage: React.FC = () => {
   useEffect(() => {
     const username = localStorage.getItem("username");
     const storedGameID = localStorage.getItem("gameID");
-    const isReconnecting = localStorage.getItem("isReconnecting") === "true";
 
     // If we have gameID in URL, treat it as reconnection
     if (urlGameID && urlGameID !== "queue") {
@@ -56,15 +56,16 @@ const GamePage: React.FC = () => {
       hasJoinedQueue.current = true;
 
       setTimeout(() => {
-        if (isReconnecting && storedGameID) {
+        // If there's a stored gameID, always try to reconnect first
+        if (storedGameID) {
           console.log("Attempting to reconnect with:", {
             username,
             gameID: storedGameID,
           });
           localStorage.removeItem("isReconnecting");
-          localStorage.removeItem("gameID");
           reconnect(username || undefined, storedGameID);
         } else {
+          // No stored gameID, join queue normally
           if (!username) {
             navigate("/");
             return;
@@ -135,6 +136,18 @@ const GamePage: React.FC = () => {
             )}
           </p>
         </div>
+      </div>
+    );
+  }
+
+  // This ensures MatchEndedNotification shows even when gameId is null
+  if (gameState.matchEnded) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <MatchEndedNotification
+          matchEnded={gameState.matchEnded}
+          matchEndedAt={gameState.matchEndedAt}
+        />
       </div>
     );
   }
@@ -223,6 +236,12 @@ const GamePage: React.FC = () => {
       <DisconnectNotification
         isDisconnected={gameState.opponentDisconnected}
         disconnectedAt={gameState.disconnectedAt}
+      />
+
+      {/* Match Ended Notification */}
+      <MatchEndedNotification
+        matchEnded={gameState.matchEnded}
+        matchEndedAt={gameState.matchEndedAt}
       />
     </div>
   );

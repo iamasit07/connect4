@@ -17,8 +17,9 @@ const LandingPage = () => {
       return;
     }
 
+    // Clear ALL localStorage data from previous games
+    localStorage.clear();
     localStorage.setItem("username", username);
-    // Navigate to queue, will redirect to /game/{gameID} once game starts
     navigate("/game/queue");
   };
 
