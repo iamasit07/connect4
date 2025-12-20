@@ -57,12 +57,14 @@ func main() {
 		Mux:        &sync.Mutex{},
 	}
 
-	go MatchMakingListener(matchMakingQueue, connectionManager, sessionManager)
+	tokenManager := websocket.NewTokenManager()
+
+	go MatchMakingListener(matchMakingQueue, connectionManager, sessionManager, tokenManager)
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		connectionManager.HandleWebSocket(w, r, sessionManager, matchMakingQueue)
+		connectionManager.HandleWebSocket(w, r, sessionManager, matchMakingQueue, tokenManager)
 	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -100,15 +102,24 @@ func main() {
 	}
 }
 
-func MatchMakingListener(queue *models.MatchmakingQueue, cm *websocket.ConnectionManager, sm *server.SessionManager) {
+func MatchMakingListener(queue *models.MatchmakingQueue, cm *websocket.ConnectionManager, sm *server.SessionManager, tm *websocket.TokenManager) {
 	for {
 		match := <-queue.MatchChannel
 
 		player1Username := match.Player1
 		player2Username := match.Player2
 
+		// Get userTokens for both players from TokenManager
+		userTokens := make(map[string]string)
+		if token1, exists := tm.GetTokenByUsername(player1Username); exists {
+			userTokens[player1Username] = token1
+		}
+		if token2, exists := tm.GetTokenByUsername(player2Username); exists {
+			userTokens[player2Username] = token2
+		}
+
 		// CreateSession will handle sending game_start messages
-		session := sm.CreateSession(player1Username, player2Username, cm)
+		session := sm.CreateSession(player1Username, player2Username, userTokens, cm)
 
 		fmt.Printf("Match started between %s and %s with game ID %s\n",
 			player1Username, player2Username, session.GameID)

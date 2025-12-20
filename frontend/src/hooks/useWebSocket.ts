@@ -31,12 +31,14 @@ const useWebSocket = (): UseWebSocketReturn => {
     queuedAt: null,
     opponentDisconnected: false,
     disconnectedAt: null,
+    matchEnded: false,
+    matchEndedAt: null,
   });
 
   const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const wsUrl = import.meta.env.VITE_WS_URL;
+    const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
     ws.current = new WebSocket(`${wsUrl}/ws`);
 
     ws.current.onopen = () => {
@@ -50,6 +52,11 @@ const useWebSocket = (): UseWebSocketReturn => {
 
       switch (message.type) {
         case "queue_joined":
+          // Save userToken if provided by backend
+          if (message.userToken) {
+            localStorage.setItem("userToken", message.userToken);
+            console.log("Saved userToken:", message.userToken);
+          }
           setGameState((prevState: GameState) => ({
             ...prevState,
             inQueue: true,
@@ -57,12 +64,9 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_start":
-          // Save gameID and sessionToken to localStorage for automatic reconnection
+          // Save gameID to localStorage for automatic reconnection
           if (message.gameId) {
             localStorage.setItem("gameID", message.gameId);
-          }
-          if (message.sessionToken) {
-            localStorage.setItem("sessionToken", message.sessionToken);
           }
           setGameState((prevState: GameState) => ({
             ...prevState,
@@ -83,11 +87,10 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_over":
-          // Clear gameID and sessionToken from localStorage when game ends
+          // Clear gameID from localStorage when game ends
           localStorage.removeItem("gameID");
-          localStorage.removeItem("sessionToken");
           localStorage.removeItem("isReconnecting");
-          
+
           setGameState((prevState: GameState) => ({
             ...prevState,
             gameOver: true,
@@ -97,6 +100,7 @@ const useWebSocket = (): UseWebSocketReturn => {
             opponentDisconnected: false,
             disconnectedAt: null,
           }));
+          
           break;
         case "opponent_disconnected":
           setGameState((prevState: GameState) => ({
@@ -113,16 +117,20 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "error":
-          // Handle error messages from backend
+          // Handle generic error messages from backend
           console.error("Server error:", message.message);
-          alert(`Error: ${message.message || "Failed to reconnect. Please try again."}`);
-          // If it's a reconnection error, redirect to home
-          if (message.message?.includes("reconnect") || message.message?.includes("game")) {
-            localStorage.removeItem("gameID");
-            localStorage.removeItem("sessionToken");
-            localStorage.removeItem("isReconnecting");
-            window.location.href = "/";
-          }
+          alert(`Error: ${message.message || "An error occurred."}`);
+          break;
+        case "no_active_game":
+        case "game_finished":
+          // Handle reconnection errors - match has ended/terminated
+          console.log("Match ended, showing countdown notification");
+          console.log("Setting matchEnded to true, message:", message);
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            matchEnded: true,
+            matchEndedAt: Date.now(),
+          }));
           break;
         default:
           console.warn("Unhandled message type:", message.type);
@@ -160,7 +168,9 @@ const useWebSocket = (): UseWebSocketReturn => {
 
   const joinQueue = (username: string) => {
     console.log("joinQueue called with username:", username);
-    sendMessage({ type: "join_queue", username });
+    // Get existing userToken from localStorage (if any)
+    const userToken = localStorage.getItem("userToken") || undefined;
+    sendMessage({ type: "join_queue", username, userToken });
   };
 
   const makeMove = (column: number) => {
@@ -170,12 +180,12 @@ const useWebSocket = (): UseWebSocketReturn => {
   };
 
   const reconnect = (username?: string, gameID?: string) => {
-    const token = localStorage.getItem("sessionToken") || "";
+    const userToken = localStorage.getItem("userToken") || "";
     sendMessage({
       type: "reconnect",
       username: username || "",
       gameID: gameID || "",
-      token: token,
+      userToken: userToken,
     });
   };
 

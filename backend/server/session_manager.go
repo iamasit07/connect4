@@ -10,11 +10,11 @@ type SessionManager struct {
 	Mux        *sync.Mutex
 }
 
-func (sm *SessionManager) CreateSession(player1Username, player2Username string, conn ConnectionManagerInterface) *GameSession {
+func (sm *SessionManager) CreateSession(player1Username, player2Username string, userTokens map[string]string, conn ConnectionManagerInterface) *GameSession {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
 
-	session := NewGameSession(player1Username, player2Username, conn)
+	session := NewGameSession(player1Username, player2Username, userTokens, conn)
 	gameID := session.GameID
 	sm.Session[gameID] = session
 	sm.UserToGame[player1Username] = gameID

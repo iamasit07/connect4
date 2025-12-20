@@ -11,14 +11,16 @@ import (
 
 // important part to manage websocket connections & operations
 type ConnectionManager struct {
-	connections map[string]*websocket.Conn  // username -> websocket connection
-	mu          sync.RWMutex
+	connections  map[string]*websocket.Conn  // username -> websocket connection
+	writeMutexes map[string]*sync.Mutex      // username -> write mutex for that connection
+	mu           sync.RWMutex
 }
 
 func NewConnectionManager() *ConnectionManager {
 	conn := &ConnectionManager{
-		connections: make(map[string]*websocket.Conn),
-		mu:          sync.RWMutex{},
+		connections:  make(map[string]*websocket.Conn),
+		writeMutexes: make(map[string]*sync.Mutex),
+		mu:           sync.RWMutex{},
 	}
 	return conn
 }
@@ -32,6 +34,7 @@ func (cm *ConnectionManager) AddConnection(username string, conn *websocket.Conn
 	}
 	
 	cm.connections[username] = conn
+	cm.writeMutexes[username] = &sync.Mutex{} // Create write mutex for this connection
 	return nil
 }
 
@@ -39,6 +42,7 @@ func (cm *ConnectionManager) RemoveConnection(username string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	delete(cm.connections, username)
+	delete(cm.writeMutexes, username)
 }
 
 func (cm *ConnectionManager) GetConnection(username string) (*websocket.Conn, bool) {
@@ -49,8 +53,12 @@ func (cm *ConnectionManager) GetConnection(username string) (*websocket.Conn, bo
 }
 
 func (cm *ConnectionManager) SendMessage(username string, message models.ServerMessage) error {
-	conn, exists := cm.GetConnection(username)
-	if !exists {
+	cm.mu.RLock()
+	conn, exists := cm.connections[username]
+	writeMutex, mutexExists := cm.writeMutexes[username]
+	cm.mu.RUnlock()
+	
+	if !exists || !mutexExists {
 		return fmt.Errorf("connection for username %s does not exist", username)
 	}
 
@@ -59,5 +67,9 @@ func (cm *ConnectionManager) SendMessage(username string, message models.ServerM
 		return err
 	}
 
+	// Use per-connection write mutex to prevent concurrent writes
+	writeMutex.Lock()
+	defer writeMutex.Unlock()
+	
 	return conn.WriteMessage(websocket.TextMessage, data)
 }
