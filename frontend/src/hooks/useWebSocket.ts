@@ -57,6 +57,13 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_start":
+          // Save gameID and sessionToken to localStorage for automatic reconnection
+          if (message.gameId) {
+            localStorage.setItem("gameID", message.gameId);
+          }
+          if (message.sessionToken) {
+            localStorage.setItem("sessionToken", message.sessionToken);
+          }
           setGameState((prevState: GameState) => ({
             ...prevState,
             gameId: message.gameId ?? null,
@@ -76,6 +83,11 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_over":
+          // Clear gameID and sessionToken from localStorage when game ends
+          localStorage.removeItem("gameID");
+          localStorage.removeItem("sessionToken");
+          localStorage.removeItem("isReconnecting");
+          
           setGameState((prevState: GameState) => ({
             ...prevState,
             gameOver: true,
@@ -99,6 +111,18 @@ const useWebSocket = (): UseWebSocketReturn => {
             opponentDisconnected: false,
             disconnectedAt: null,
           }));
+          break;
+        case "error":
+          // Handle error messages from backend
+          console.error("Server error:", message.message);
+          alert(`Error: ${message.message || "Failed to reconnect. Please try again."}`);
+          // If it's a reconnection error, redirect to home
+          if (message.message?.includes("reconnect") || message.message?.includes("game")) {
+            localStorage.removeItem("gameID");
+            localStorage.removeItem("sessionToken");
+            localStorage.removeItem("isReconnecting");
+            window.location.href = "/";
+          }
           break;
         default:
           console.warn("Unhandled message type:", message.type);
@@ -146,10 +170,12 @@ const useWebSocket = (): UseWebSocketReturn => {
   };
 
   const reconnect = (username?: string, gameID?: string) => {
+    const token = localStorage.getItem("sessionToken") || "";
     sendMessage({
       type: "reconnect",
       username: username || "",
       gameID: gameID || "",
+      token: token,
     });
   };
 

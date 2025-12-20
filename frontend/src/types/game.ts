@@ -29,6 +29,7 @@ export interface ServerMessage {
   winner?: string;
   reason?: string;
   message?: string;
+  sessionToken?: string; // Token for reconnection authentication
 }
 
 export interface ClientMessage {
@@ -36,4 +37,5 @@ export interface ClientMessage {
   username?: string;
   gameID?: string;
   column?: number;
+  token?: string; // Session token for reconnection
 }

@@ -10,7 +10,7 @@ const GamePage: React.FC = () => {
     useWebSocket();
   const navigate = useNavigate();
   const hasJoinedQueue = useRef(false);
-  const [countdown, setCountdown] = React.useState<number | null>(null);
+  const [, forceUpdate] = React.useState(0);
 
   // Navigate to correct URL when game starts
   useEffect(() => {
@@ -30,11 +30,18 @@ const GamePage: React.FC = () => {
         navigate("/");
         return;
       }
-      
+
       if (connected && !hasJoinedQueue.current) {
         hasJoinedQueue.current = true;
-        console.log("Attempting to reconnect with URL gameID:", { username, gameID: urlGameID });
-        reconnect(username, urlGameID);
+        
+        // Add small delay to ensure WebSocket is fully ready
+        setTimeout(() => {
+          console.log("Attempting to reconnect with URL gameID:", {
+            username,
+            gameID: urlGameID,
+          });
+          reconnect(username, urlGameID);
+        }, 100);
       }
       return;
     }
@@ -50,7 +57,10 @@ const GamePage: React.FC = () => {
 
       setTimeout(() => {
         if (isReconnecting && storedGameID) {
-          console.log("Attempting to reconnect with:", { username, gameID: storedGameID });
+          console.log("Attempting to reconnect with:", {
+            username,
+            gameID: storedGameID,
+          });
           localStorage.removeItem("isReconnecting");
           localStorage.removeItem("gameID");
           reconnect(username || undefined, storedGameID);
@@ -69,19 +79,17 @@ const GamePage: React.FC = () => {
   // Countdown timer for matchmaking queue
   useEffect(() => {
     if (gameState.inQueue && gameState.queuedAt) {
-      const updateCountdown = () => {
-        const elapsed = Math.floor((Date.now() - gameState.queuedAt!) / 1000);
-        const remaining = Math.max(0, 10 - elapsed);
-        setCountdown(remaining);
-      };
-      
-      updateCountdown(); // Initial update
-      const interval = setInterval(updateCountdown, 1000);
+      const interval = setInterval(() => {
+        forceUpdate((n) => n + 1);
+      }, 1000);
       return () => clearInterval(interval);
-    } else {
-      setCountdown(null);
     }
   }, [gameState.inQueue, gameState.queuedAt]);
+
+  const queueCountdown =
+    gameState.inQueue && gameState.queuedAt
+      ? Math.max(0, 10 - Math.floor((Date.now() - gameState.queuedAt) / 1000))
+      : null;
 
   const handleColumnClick = (col: number) => {
     console.log("Column clicked:", col);
@@ -115,9 +123,12 @@ const GamePage: React.FC = () => {
         <div className="text-center">
           <p className="text-lg text-gray-800">Finding opponent...</p>
           <p className="text-sm text-gray-500 mt-2">
-            {countdown !== null ? (
+            {queueCountdown !== null ? (
               <span>
-                Bot joins in <span className="font-bold text-blue-600">{countdown} second</span>
+                Bot joins in{" "}
+                <span className="font-bold text-blue-600">
+                  {queueCountdown} second{queueCountdown !== 1 ? "s" : ""}
+                </span>
               </span>
             ) : (
               "Waiting..."
@@ -137,7 +148,9 @@ const GamePage: React.FC = () => {
   }
 
   return (
-    <div className={`flex flex-col items-center justify-center min-h-screen ${getBackgroundColor()} gap-6 p-4`}>
+    <div
+      className={`flex flex-col items-center justify-center min-h-screen ${getBackgroundColor()} gap-6 p-4`}
+    >
       {/* Game ID Display */}
       {gameState.gameId && (
         <div className="text-xs text-gray-500 font-mono">
@@ -147,11 +160,13 @@ const GamePage: React.FC = () => {
 
       {/* Turn Indicator Banner */}
       {!gameState.gameOver && gameState.currentTurn && (
-        <div className={`w-full max-w-md px-4 py-2 rounded text-center font-bold ${
-          gameState.currentTurn === 1 
-            ? "bg-yellow-400 text-yellow-900" 
-            : "bg-red-500 text-white"
-        }`}>
+        <div
+          className={`w-full max-w-md px-4 py-2 rounded text-center font-bold ${
+            gameState.currentTurn === 1
+              ? "bg-yellow-400 text-yellow-900"
+              : "bg-red-500 text-white"
+          }`}
+        >
           Player {gameState.currentTurn}'s Turn
           {gameState.currentTurn === gameState.yourPlayer && " (You)"}
         </div>

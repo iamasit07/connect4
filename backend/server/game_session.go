@@ -366,12 +366,13 @@ func (gs *GameSession) HandleReconnect(username string, conn ConnectionManagerIn
 	opponentUsername := gs.GetOpponentUsername(username)
 
 	reconnect_message := models.ServerMessage{
-		Type:        "game_start",
-		GameID:      gs.GameID,
-		Opponent:    opponentUsername,
-		YourPlayer:  int(playerID),
-		CurrentTurn: int(gs.Game.CurrentPlayer),
-		Board:       gs.Game.Board,
+		Type:         "game_start",
+		GameID:       gs.GameID,
+		Opponent:     opponentUsername,
+		YourPlayer:   int(playerID),
+		CurrentTurn:  int(gs.Game.CurrentPlayer),
+		Board:        gs.Game.Board,
+		SessionToken: gs.SessionTokens[username],
 	}
 
 	opponent_reconnect_message := models.ServerMessage{
