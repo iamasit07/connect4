@@ -17,8 +17,9 @@ const LandingPage = () => {
       return;
     }
 
-    // Clear ALL localStorage data from previous games
-    localStorage.clear();
+    // Clear only game-specific data, NEVER clear userToken (persistent per device)
+    localStorage.removeItem("gameID");
+    localStorage.removeItem("isReconnecting");
     localStorage.setItem("username", username);
     navigate("/game/queue");
   };

@@ -9,5 +9,5 @@ import (
 func GenerateToken() string {
 	bytes := make([]byte, 16) // 16 bytes = 128 bits
 	rand.Read(bytes)
-	return "tok_" + hex.EncodeToString(bytes)
+	return hex.EncodeToString(bytes)
 }

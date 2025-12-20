@@ -22,7 +22,7 @@ func NewTokenManager() *TokenManager {
 
 // GenerateUserToken creates a new persistent user token
 func (tm *TokenManager) GenerateUserToken() string {
-	return "utok_" + utils.GenerateToken()
+	return "tkn_" + utils.GenerateToken()
 }
 
 // GetUsernameByToken returns the username associated with a token
@@ -46,7 +46,12 @@ func (tm *TokenManager) SetTokenUsername(token, username string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	
-	// Remove old mapping if username had a different token
+	// Remove old USERNAME mapping for this TOKEN (if exists and different)
+	if oldUsername, exists := tm.tokenToUsername[token]; exists && oldUsername != username {
+		delete(tm.usernameToToken, oldUsername)
+	}
+	
+	// Remove old TOKEN mapping for this USERNAME (if exists and different)
 	if oldToken, exists := tm.usernameToToken[username]; exists && oldToken != token {
 		delete(tm.tokenToUsername, oldToken)
 	}
