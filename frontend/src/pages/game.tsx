@@ -33,7 +33,7 @@ const GamePage: React.FC = () => {
 
       if (connected && !hasJoinedQueue.current) {
         hasJoinedQueue.current = true;
-        
+
         // Add small delay to ensure WebSocket is fully ready
         setTimeout(() => {
           console.log("Attempting to reconnect with URL gameID:", {

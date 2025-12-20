@@ -12,7 +12,7 @@ import (
 
 var DB *sql.DB
 
-func InitDB(connStr string) error {
+func InitDB(connStr string, maxOpenConns, maxIdleConns, connMaxLifetimeMin int) error {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return err
@@ -28,9 +28,9 @@ func InitDB(connStr string) error {
 		return fmt.Errorf("failed to initialize database schema: %v", err)
 	}
 
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(25)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxIdleConns)
+	db.SetConnMaxLifetime(time.Duration(connMaxLifetimeMin) * time.Minute)
 
 	DB = db
 	log.Println("Database connected successfully")

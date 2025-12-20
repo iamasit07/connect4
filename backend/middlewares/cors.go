@@ -2,31 +2,29 @@ package middlewares
 
 import (
 	"net/http"
-	"os"
-	"strings"
+
+	"github.com/iamasit07/4-in-a-row/backend/config"
 )
 
 func EnableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
-		if allowedOrigins == "" {
-			// Default to allow all in development
-			allowedOrigins = "*"
-		}
-
 		origin := r.Header.Get("Origin")
 		
-		if allowedOrigins == "*" {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-		} else {
-			// Check if origin is in allowed list
-			origins := strings.Split(allowedOrigins, ",")
-			for _, allowed := range origins {
-				if strings.TrimSpace(allowed) == origin {
-					w.Header().Set("Access-Control-Allow-Origin", origin)
-					break
-				}
+		// Check if origin is in allowed list
+		allowed := false
+		for _, allowedOrigin := range config.AppConfig.AllowedOrigins {
+			if allowedOrigin == origin {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				allowed = true
+				break
 			}
+		}
+		
+		// If origin not allowed, don't set CORS headers (request will be blocked by browser)
+		if !allowed && origin != "" {
+			// Log rejected origin for debugging
+			http.Error(w, "Origin not allowed", http.StatusForbidden)
+			return
 		}
 
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
