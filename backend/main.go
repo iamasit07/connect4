@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/joho/godotenv"
 
+	"github.com/iamasit07/4-in-a-row/backend/config"
 	"github.com/iamasit07/4-in-a-row/backend/db"
 	"github.com/iamasit07/4-in-a-row/backend/middlewares"
 	"github.com/iamasit07/4-in-a-row/backend/models"
@@ -26,14 +26,16 @@ func main() {
 		log.Println("No .env file found, using environment variables")
 	}
 
-	dbUri := os.Getenv("DB_URI")
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	config.LoadConfig()
 
-	// db connection
-	err = db.InitDB(dbUri)
+	dbUri := config.GetEnv("DB_URI", "")
+	port := config.GetEnv("PORT", "8080")
+	
+	dbMaxOpenConns := config.GetEnvAsInt("DB_MAX_OPEN_CONNS", 25)
+	dbMaxIdleConns := config.GetEnvAsInt("DB_MAX_IDLE_CONNS", 25)
+	dbConnMaxLifetimeMin := config.GetEnvAsInt("DB_CONN_MAX_LIFETIME_MINUTES", 5)
+
+	err = db.InitDB(dbUri, dbMaxOpenConns, dbMaxIdleConns, dbConnMaxLifetimeMin)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}

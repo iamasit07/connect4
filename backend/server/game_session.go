@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/iamasit07/4-in-a-row/backend/bot"
+	"github.com/iamasit07/4-in-a-row/backend/config"
 	"github.com/iamasit07/4-in-a-row/backend/db"
 	"github.com/iamasit07/4-in-a-row/backend/game"
 	"github.com/iamasit07/4-in-a-row/backend/models"
@@ -291,7 +292,7 @@ func (gs *GameSession) HandleDisconnect(username string, conn ConnectionManagerI
 		Message: "Your opponent has disconnected. Waiting for reconnection...",
 	}
 
-	gs.ReconnectTimer = time.AfterFunc(30*time.Second, func() {
+	gs.ReconnectTimer = time.AfterFunc(config.AppConfig.ReconnectTimeout, func() {
 		gs.HandleReconnectTimeout(username, conn)
 	})
 
