@@ -5,33 +5,32 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/gorilla/websocket"
+	"github.com/iamasit07/4-in-a-row/backend/config"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/server"
-	"github.com/joho/godotenv"
 )
 
 func (cm *ConnectionManager) HandleWebSocket(w http.ResponseWriter, r *http.Request, sessionManager *server.SessionManager, matchMakingQueue *models.MatchmakingQueue) {
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("No .env file found, using environment variables")
-	}
-
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
-			if allowedOrigins == "" || allowedOrigins == "*" {
-				return false
+			// Allow all origins configured in config (production URL + localhost)
+			origin := r.Header.Get("Origin")
+			for _, allowedOrigin := range config.AppConfig.AllowedOrigins {
+				if allowedOrigin == origin {
+					return true
+				}
 			}
-			return true
+			// Reject if origin not in allowed list
+			return false
 		},
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		http.Error(w, "Failed to upgrade to WebSocket", http.StatusInternalServerError)
+		log.Printf("Failed to upgrade to WebSocket: %v", err)
+		// Don't call http.Error here - upgrade already wrote headers
 		return
 	}
 
