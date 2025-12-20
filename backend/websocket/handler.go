@@ -89,17 +89,26 @@ func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
 	*currentUsername = message.Username
 	*isAuthenticated = true
 
-	// Handle persistent user token
+	// Handle persistent user token with security
 	userToken := message.UserToken
 	if userToken == "" {
 		// No token provided, generate new one
 		userToken = tokenManager.GenerateUserToken()
 		log.Printf("[TOKEN] Generated new user token for %s: %s", *currentUsername, userToken)
 	} else {
-		log.Printf("[TOKEN] User %s provided existing token: %s", *currentUsername, userToken)
+		// Token provided - validate ownership to prevent theft
+		existingUser, exists := tokenManager.GetUsernameByToken(userToken)
+		if exists && existingUser != *currentUsername {
+			// Token belongs to someone else - this is a security violation!
+			log.Printf("[SECURITY] User %s attempted to use token owned by %s - forcing new token generation", 
+				*currentUsername, existingUser)
+			userToken = tokenManager.GenerateUserToken()
+		} else {
+			log.Printf("[TOKEN] User %s provided valid token: %s", *currentUsername, userToken)
+		}
 	}
 
-	// Map token to username
+	// Map token to username (now safe after validation)
 	tokenManager.SetTokenUsername(userToken, *currentUsername)
 
 	// Check for existing active session by username
@@ -216,14 +225,38 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, session
 		return
 	}
 
-	// SECURITY CHECK 4: Verify username is not currently connected
+	// SECURITY CHECK 4: Verify user token matches (EARLY - before connection checks)
+	expectedToken, hasToken := session.UserTokens[username]
+	if !hasToken || expectedToken != userToken {
+		log.Printf("[RECONNECT] Invalid token for %s in game %s", username, gameID)
+		SendErrorMessage(conn, "invalid_token", "Invalid user token")
+		return
+	}
+
+	// SECURITY CHECK 5: Verify game doesn't already have 2 active connections
+	activeConnections := 0
+	if _, exists := connManager.GetConnection(session.Player1Username); exists {
+		activeConnections++
+	}
+	if !session.IsBot() {
+		if _, exists := connManager.GetConnection(session.Player2Username); exists {
+			activeConnections++
+		}
+	}
+	if activeConnections >= 2 {
+		log.Printf("[RECONNECT] Game %s already has 2 active connections", gameID)
+		SendErrorMessage(conn, "game_full", "Both players are already connected to this game")
+		return
+	}
+
+	// SECURITY CHECK 6: Verify username is not currently connected
 	_, isConnected := connManager.GetConnection(username)
 	if isConnected {
 		SendErrorMessage(conn, "already_connected", "This username is already connected")
 		return
 	}
 
-	// SECURITY CHECK 5: Verify player is actually disconnected
+	// SECURITY CHECK 7: Verify player is actually disconnected
 	isDisconnected := false
 	for _, disconnectedUser := range session.DisconnectedPlayers {
 		if disconnectedUser == username {
@@ -234,13 +267,6 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn, session
 
 	if !isDisconnected {
 		SendErrorMessage(conn, "not_disconnected", "You are not disconnected from this game")
-		return
-	}
-
-	// SECURITY CHECK 6: Verify user token matches
-	expectedToken, hasToken := session.UserTokens[username]
-	if !hasToken || expectedToken != userToken {
-		SendErrorMessage(conn, "invalid_token", "Invalid user token")
 		return
 	}
 
