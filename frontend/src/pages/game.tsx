@@ -58,12 +58,19 @@ const GamePage: React.FC = () => {
       setTimeout(() => {
         // If there's a stored gameID, always try to reconnect first
         if (storedGameID) {
+          if (!username) {
+            // Invalid state: have gameID but no username
+            console.warn("Found gameID but no username, clearing state");
+            localStorage.removeItem("gameID");
+            navigate("/");
+            return;
+          }
           console.log("Attempting to reconnect with:", {
             username,
             gameID: storedGameID,
           });
           localStorage.removeItem("isReconnecting");
-          reconnect(username || undefined, storedGameID);
+          reconnect(username, storedGameID);
         } else {
           // No stored gameID, join queue normally
           if (!username) {
@@ -243,6 +250,13 @@ const GamePage: React.FC = () => {
         matchEnded={gameState.matchEnded}
         matchEndedAt={gameState.matchEndedAt}
       />
+
+      {/* Error Message Display */}
+      {gameState.error && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 max-w-md text-center">
+          {gameState.error}
+        </div>
+      )}
     </div>
   );
 };

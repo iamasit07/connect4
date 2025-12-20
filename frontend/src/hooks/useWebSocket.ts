@@ -33,6 +33,7 @@ const useWebSocket = (): UseWebSocketReturn => {
     disconnectedAt: null,
     matchEnded: false,
     matchEndedAt: null,
+    error: null,
   });
 
   const ws = useRef<WebSocket | null>(null);
@@ -117,9 +118,29 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "error":
-          // Handle generic error messages from backend
-          console.error("Server error:", message.message);
-          alert(`Error: ${message.message || "An error occurred."}`);
+        case "invalid_username":
+        case "token_taken":
+        case "queue_error":
+        case "invalid_move":
+        case "not_your_turn":
+        case "invalid_token":
+        case "not_in_game":
+        case "game_full":
+        case "already_connected":
+        case "not_disconnected":
+          // Handle error messages from backend
+          console.error(`Server error [${message.type}]:`, message.message);
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            error: message.message || `Error: ${message.type}`,
+          }));
+          // Clear error after 5 seconds
+          setTimeout(() => {
+            setGameState((prevState: GameState) => ({
+              ...prevState,
+              error: null,
+            }));
+          }, 5000);
           break;
         case "no_active_game":
         case "game_finished":
@@ -175,7 +196,7 @@ const useWebSocket = (): UseWebSocketReturn => {
 
   const makeMove = (column: number) => {
     if (gameState.gameId) {
-      sendMessage({ type: "make_move", column });
+      sendMessage({ type: "move", column });
     }
   };
 

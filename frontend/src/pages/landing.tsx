@@ -17,7 +17,6 @@ const LandingPage = () => {
       return;
     }
 
-    // Clear only game-specific data, NEVER clear userToken (persistent per device)
     localStorage.removeItem("gameID");
     localStorage.removeItem("isReconnecting");
     localStorage.setItem("username", username);
@@ -34,10 +33,8 @@ const LandingPage = () => {
       localStorage.setItem("username", reconnectUsername);
     }
     if (reconnectGameID) {
-      // Navigate directly to the game with gameID in URL
       navigate(`/game/${reconnectGameID}`);
     } else {
-      // If no gameID provided, go to queue
       localStorage.setItem("isReconnecting", "true");
       navigate("/game/queue");
     }
