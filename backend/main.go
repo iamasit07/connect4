@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -19,7 +23,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Starting 4-in-a-row backend server...")
+	log.Println("Starting 4-in-a-row backend server...")
 
 	err := godotenv.Load()
 	if err != nil {
@@ -44,17 +48,18 @@ func main() {
 	connectionManager := websocket.NewConnectionManager()
 
 	timerMap := make(map[string]*time.Timer)
+	waitingPlayersMap := make(map[string]string)  // token → username
 	matchMakingQueue := &models.MatchmakingQueue{
-		WaitingPlayers: []string{},
+		WaitingPlayers: waitingPlayersMap,
 		MatchChannel:   make(chan models.Match, 100),
 		Mux:            &sync.Mutex{},
 		Timer:          &timerMap,
 	}
 
 	sessionManager := &server.SessionManager{
-		Session:    make(map[string]*server.GameSession),
-		UserToGame: make(map[string]string),
-		Mux:        &sync.Mutex{},
+		Session:     make(map[string]*server.GameSession),
+		TokenToGame: make(map[string]string),
+		Mux:         &sync.Mutex{},
 	}
 
 	tokenManager := websocket.NewTokenManager()
@@ -64,7 +69,15 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		connectionManager.HandleWebSocket(w, r, sessionManager, matchMakingQueue, tokenManager)
+		upgrader := websocket.CreateUpgrader()
+		
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Println("Error during connection upgrade:", err)
+			return
+		}
+
+		websocket.HandleConnection(conn, connectionManager, matchMakingQueue, sessionManager, tokenManager)
 	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -94,34 +107,53 @@ func main() {
 		Handler: middlewares.EnableCORS(mux),
 	}
 
-	fmt.Printf("Server is listening on port %s\n", port)
+	log.Printf("Server is listening on port %s\n", port)
 
-	err = httpServer.ListenAndServe()
-	if err != nil {
-		fmt.Println("Error starting server:", err)
+	// Start server in goroutine
+	go func() {
+		err = httpServer.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal for graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Server is shutting down gracefully...")
+
+	// Create shutdown context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Shutdown server
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
 	}
+
+	log.Println("Server exited gracefully")
 }
 
 func MatchMakingListener(queue *models.MatchmakingQueue, cm *websocket.ConnectionManager, sm *server.SessionManager, tm *websocket.TokenManager) {
 	for {
 		match := <-queue.MatchChannel
 
-		player1Username := match.Player1
-		player2Username := match.Player2
+		player1Token := match.Player1Token
+		player1Username := match.Player1Username
+		player2Token := match.Player2Token
+		player2Username := match.Player2Username
 
-		// Get userTokens for both players from TokenManager
-		userTokens := make(map[string]string)
-		if token1, exists := tm.GetTokenByUsername(player1Username); exists {
-			userTokens[player1Username] = token1
-		}
-		if token2, exists := tm.GetTokenByUsername(player2Username); exists {
-			userTokens[player2Username] = token2
+		// If player2 is bot, use BOT_TOKEN from config
+		if player2Username == models.BotUsername {
+			player2Token = config.AppConfig.BotToken
 		}
 
 		// CreateSession will handle sending game_start messages
-		session := sm.CreateSession(player1Username, player2Username, userTokens, cm)
+		session := sm.CreateSession(player1Token, player1Username, player2Token, player2Username, cm)
 
-		fmt.Printf("Match started between %s and %s with game ID %s\n",
-			player1Username, player2Username, session.GameID)
+		log.Printf("Match started between %s (%s) and %s (%s) with game ID %s\n",
+			player1Username, player1Token, player2Username, player2Token, session.GameID)
 	}
 }
