@@ -14,6 +14,7 @@ type ServerMessage struct {
 	GameID        string       `json:"gameId,omitempty"`
 	Opponent      string       `json:"opponent,omitempty"`
 	YourPlayer    int          `json:"yourPlayer,omitempty"`    // 1 or 2 for board position
+	YourToken     string       `json:"yourToken,omitempty"`     // Client's token for identification
 	CurrentTurn   int          `json:"currentTurn,omitempty"`   // 1 or 2
 	Column        int          `json:"column,omitempty"`
 	Row           int          `json:"row,omitempty"`

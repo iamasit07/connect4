@@ -1,26 +1,29 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-interface MatchEndedNotificationProps {
-  matchEnded: boolean;
-  matchEndedAt: number | null;
+interface ErrorNotificationProps {
+  show: boolean;
+  triggeredAt: number | null;
+  title?: string;
+  reason?: string;
 }
 
-const MatchEndedNotification: React.FC<MatchEndedNotificationProps> = ({
-  matchEnded,
-  matchEndedAt,
+const ErrorNotification: React.FC<ErrorNotificationProps> = ({
+  show,
+  triggeredAt,
+  title = "Error",
+  reason,
 }) => {
   const [, forceUpdate] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!matchEnded || !matchEndedAt) return;
+    if (!show || !triggeredAt) return;
 
     const interval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - matchEndedAt) / 1000);
+      const elapsed = Math.floor((Date.now() - triggeredAt) / 1000);
       const countdown = Math.max(0, 10 - elapsed);
 
-      // Check if countdown has reached 0
       if (countdown === 0) {
         clearInterval(interval);
         localStorage.removeItem("gameID");
@@ -30,16 +33,15 @@ const MatchEndedNotification: React.FC<MatchEndedNotificationProps> = ({
         return;
       }
 
-      // Force re-render to update countdown display
       forceUpdate((n) => n + 1);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [matchEnded, matchEndedAt, navigate]);
+  }, [show, triggeredAt, navigate]);
 
-  if (!matchEnded || !matchEndedAt) return null;
+  if (!show || !triggeredAt) return null;
 
-  const elapsed = Math.floor((Date.now() - matchEndedAt) / 1000);
+  const elapsed = Math.floor((Date.now() - triggeredAt) / 1000);
   const countdown = Math.max(0, 10 - elapsed);
 
   return (
@@ -61,11 +63,13 @@ const MatchEndedNotification: React.FC<MatchEndedNotificationProps> = ({
               />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Match Ended</h2>
-          <p className="text-gray-600 mb-6">
-            This game session has ended or no longer exists. You will be
-            redirected to the home page.
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">{title}</h2>
+          {reason && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+              <p className="text-sm font-semibold text-red-800 mb-1">Reason:</p>
+              <p className="text-sm text-red-700">{reason}</p>
+            </div>
+          )}
           <div className="bg-gray-100 rounded-lg p-4">
             <p className="text-sm text-gray-700 mb-2">Redirecting in:</p>
             <p className="text-4xl font-bold text-blue-600">
@@ -78,4 +82,4 @@ const MatchEndedNotification: React.FC<MatchEndedNotificationProps> = ({
   );
 };
 
-export default MatchEndedNotification;
+export default ErrorNotification;

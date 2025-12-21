@@ -6,10 +6,9 @@ import (
 	"github.com/iamasit07/4-in-a-row/backend/utils"
 )
 
-// TokenManager manages persistent user tokens
 type TokenManager struct {
-	tokenToUsername map[string]string // userToken -> username
-	usernameToToken map[string]string // username -> userToken
+	tokenToUsername map[string]string
+	usernameToToken map[string]string
 	mu              sync.RWMutex
 }
 
@@ -20,12 +19,10 @@ func NewTokenManager() *TokenManager {
 	}
 }
 
-// GenerateUserToken creates a new persistent user token
 func (tm *TokenManager) GenerateUserToken() string {
 	return "tkn_" + utils.GenerateToken()
 }
 
-// GetUsernameByToken returns the username associated with a token
 func (tm *TokenManager) GetUsernameByToken(token string) (string, bool) {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
@@ -33,7 +30,6 @@ func (tm *TokenManager) GetUsernameByToken(token string) (string, bool) {
 	return username, exists
 }
 
-// GetTokenByUsername returns the token associated with a username
 func (tm *TokenManager) GetTokenByUsername(username string) (string, bool) {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
@@ -41,17 +37,15 @@ func (tm *TokenManager) GetTokenByUsername(username string) (string, bool) {
 	return token, exists
 }
 
-// SetTokenUsername creates or updates the mapping between token and username
+// SetTokenUsername maintains bidirectional token-username mapping with cleanup of old associations
 func (tm *TokenManager) SetTokenUsername(token, username string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	
-	// Remove old USERNAME mapping for this TOKEN (if exists and different)
 	if oldUsername, exists := tm.tokenToUsername[token]; exists && oldUsername != username {
 		delete(tm.usernameToToken, oldUsername)
 	}
 	
-	// Remove old TOKEN mapping for this USERNAME (if exists and different)
 	if oldToken, exists := tm.usernameToToken[username]; exists && oldToken != token {
 		delete(tm.tokenToUsername, oldToken)
 	}
@@ -60,7 +54,6 @@ func (tm *TokenManager) SetTokenUsername(token, username string) {
 	tm.usernameToToken[username] = token
 }
 
-// RemoveToken removes a token and its associated username
 func (tm *TokenManager) RemoveToken(token string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()

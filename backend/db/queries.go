@@ -13,28 +13,29 @@ type PlayerStats struct {
 	WinRate     float64 `json:"win_rate"`
 }
 
-func UpsertPlayer(username string, won bool) error {
+func UpsertPlayer(userToken, username string, won bool) error {
 	query := `
-	INSERT INTO players (username, games_played, games_won)
-	VALUES ($1, 1, CASE WHEN $2 THEN 1 ELSE 0 END)
-	ON CONFLICT (username)
+	INSERT INTO players (user_token, username, games_played, games_won)
+	VALUES ($1, $2, 1, CASE WHEN $3 THEN 1 ELSE 0 END)
+	ON CONFLICT (user_token)
 	DO UPDATE SET
+		username = $2,
 		games_played = players.games_played + 1,
-		games_won = players.games_won + CASE WHEN $2 THEN 1 ELSE 0 END;
+		games_won = players.games_won + CASE WHEN $3 THEN 1 ELSE 0 END;
 	`
 	winIncrement := 0
 	if won {
 		winIncrement = 1
 	}
 
-	_, err := DB.Exec(query, username, winIncrement)
+	_, err := DB.Exec(query, userToken, username, winIncrement)
 	if err != nil {
 		return fmt.Errorf("failed to upsert player: %v", err)
 	}
 	return nil
 }
 
-func SaveGame(gameID, player1, player2, winner, reason string, totalMoves, durationSeconds int, createdAt, finishedAt time.Time) error {
+func SaveGame(gameID, player1Token, player1Username, player2Token, player2Username, winnerToken, winnerUsername, reason string, totalMoves, durationSeconds int, createdAt, finishedAt time.Time) error {
 	tx, err := DB.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %v", err)
@@ -42,22 +43,27 @@ func SaveGame(gameID, player1, player2, winner, reason string, totalMoves, durat
 
 	defer tx.Rollback()
 
-	playerWon := (winner == player1)
-	if err := UpsertPlayerTx(tx, player1, playerWon); err != nil {
+	// Update player1 stats
+	player1Won := (winnerToken == player1Token)
+	if err := UpsertPlayerTx(tx, player1Token, player1Username, player1Won); err != nil {
 		return err
 	}
 
-	playerWon = (winner == player2 && player2 != "BOT")
-	if err := UpsertPlayerTx(tx, player2, playerWon); err != nil {
-		return err
+	// Update player2 stats (if not bot)
+	if player2Username != "BOT" {
+		player2Won := (winnerToken == player2Token)
+		if err := UpsertPlayerTx(tx, player2Token, player2Username, player2Won); err != nil {
+			return err
+		}
 	}
 
+	// Insert game record with tokens
 	query := `
-	INSERT INTO game (id, game_id, player1_username, player2_username, winner, reason, total_moves, duration_seconds, created_at, finished_at)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+	INSERT INTO game (game_id, player1_token, player1_username, player2_token, player2_username, winner_token, winner_username, reason, total_moves, duration_seconds, created_at, finished_at)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
 	`
 
-	_, err = tx.Exec(query, gameID, gameID, player1, player2, winner, reason, totalMoves, durationSeconds, createdAt, finishedAt)
+	_, err = tx.Exec(query, gameID, player1Token, player1Username, player2Token, player2Username, winnerToken, winnerUsername, reason, totalMoves, durationSeconds, createdAt, finishedAt)
 	if err != nil {
 		return fmt.Errorf("failed to insert game record: %v", err)
 	}
@@ -68,21 +74,22 @@ func SaveGame(gameID, player1, player2, winner, reason string, totalMoves, durat
 	return nil
 }
 
-func UpsertPlayerTx(tx *sql.Tx, username string, won bool) error {
+func UpsertPlayerTx(tx *sql.Tx, userToken, username string, won bool) error {
 	query := `
-	INSERT INTO players (username, games_played, games_won)
-	VALUES ($1, 1, CASE WHEN $2 THEN 1 ELSE 0 END)
-	ON CONFLICT (username)
+	INSERT INTO players (user_token, username, games_played, games_won)
+	VALUES ($1, $2, 1, CASE WHEN $3 THEN 1 ELSE 0 END)
+	ON CONFLICT (user_token)
 	DO UPDATE SET
+		username = $2,
 		games_played = players.games_played + 1,
-		games_won = players.games_won + CASE WHEN $2 THEN 1 ELSE 0 END;
+		games_won = players.games_won + CASE WHEN $3 THEN 1 ELSE 0 END;
 	`
 	winIncrement := 0
 	if won {
 		winIncrement = 1
 	}
 
-	_, err := tx.Exec(query, username, winIncrement)
+	_, err := tx.Exec(query, userToken, username, winIncrement)
 	if err != nil {
 		return fmt.Errorf("failed to upsert player in transaction: %v", err)
 	}
@@ -97,7 +104,7 @@ func GetLeaderboard(limit int) ([]PlayerStats, error) {
 			ELSE 0
 		END AS win_rate
 	FROM players
-	ORDER BY win_rate DESC, games_played DESC
+	ORDER BY win_rate DESC, games_played DESC, username ASC
 	LIMIT $1;
 	`
 
@@ -133,3 +140,65 @@ func GameExists(gameID string) (bool, error) {
 	}
 	return exists, nil
 }
+
+// GameResult represents the result of a finished game
+type GameResult struct {
+	GameID         string
+	Player1Token   string
+	Player1Username string
+	Player2Token   string
+	Player2Username string
+	WinnerToken    string
+	WinnerUsername string
+	Reason         string
+	TotalMoves     int
+	DurationSeconds int
+	CreatedAt      time.Time
+	FinishedAt     time.Time
+}
+
+// GetGameByID retrieves game details from the database by gameID
+func GetGameByID(gameID string) (*GameResult, error) {
+	query := `
+	SELECT game_id, player1_token, player1_username, player2_token, player2_username, 
+	       winner_token, winner_username, reason, total_moves, duration_seconds, 
+	       created_at, finished_at
+	FROM game 
+	WHERE game_id = $1;
+	`
+	
+	var result GameResult
+	var winnerToken, winnerUsername sql.NullString
+	
+	err := DB.QueryRow(query, gameID).Scan(
+		&result.GameID,
+		&result.Player1Token,
+		&result.Player1Username,
+		&result.Player2Token,
+		&result.Player2Username,
+		&winnerToken,
+		&winnerUsername,
+		&result.Reason,
+		&result.TotalMoves,
+		&result.DurationSeconds,
+		&result.CreatedAt,
+		&result.FinishedAt,
+	)
+	
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get game by ID: %v", err)
+	}
+	
+	if winnerToken.Valid {
+		result.WinnerToken = winnerToken.String
+	}
+	if winnerUsername.Valid {
+		result.WinnerUsername = winnerUsername.String
+	}
+	
+	return &result, nil
+}
+

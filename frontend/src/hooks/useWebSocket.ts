@@ -33,6 +33,7 @@ const useWebSocket = (): UseWebSocketReturn => {
     disconnectedAt: null,
     matchEnded: false,
     matchEndedAt: null,
+    error: null,
   });
 
   const ws = useRef<WebSocket | null>(null);
@@ -79,6 +80,23 @@ const useWebSocket = (): UseWebSocketReturn => {
             inQueue: false,
           }));
           break;
+        case "reconnect_success":
+          if (message.gameId) {
+            localStorage.setItem("gameID", message.gameId);
+          }
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            gameId: message.gameId ?? null,
+            yourPlayer: (message.yourPlayer as PlayerID) ?? null,
+            opponent: message.opponent ?? null,
+            currentTurn: (message.currentTurn as PlayerID) ?? null,
+            board: message.board ?? prevState.board,
+            gameOver: false,
+            inQueue: false,
+            matchEnded: false,
+            matchEndedAt: null,
+          }));
+          break;
         case "move_made":
           setGameState((prevState: GameState) => ({
             ...prevState,
@@ -116,20 +134,67 @@ const useWebSocket = (): UseWebSocketReturn => {
             disconnectedAt: null,
           }));
           break;
-        case "error":
-          // Handle generic error messages from backend
-          console.error("Server error:", message.message);
-          alert(`Error: ${message.message || "An error occurred."}`);
+        case "token_corrupted":
+          console.error("Token corruption detected, clearing session and redirecting");
+          localStorage.removeItem("gameID");
+          localStorage.removeItem("username");
+          localStorage.removeItem("userToken");
+          localStorage.removeItem("isReconnecting");
+          
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            reason: message.message || "Your authentication token was corrupted or modified. Please rejoin with correct credentials.",
+            matchEnded: true,
+            matchEndedAt: Date.now(),
+            gameOver: true,
+            inQueue: false,
+          }));
+          
+          // Redirect to home after 10 seconds (handled by MatchEndedNotification)
           break;
+        case "error":
+        case "invalid_username":
+        case "token_taken":
+        case "queue_error":
+        case "invalid_move":
+        case "not_your_turn":
+        case "not_in_game":
+        case "game_full":
+        case "already_connected":
+        case "not_disconnected":
+          console.error(`Server error [${message.type}]:`, message.message);
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            error: message.message || `Error: ${message.type}`,
+          }));
+          // Clear error after 5 seconds
+          setTimeout(() => {
+            setGameState((prevState: GameState) => ({
+              ...prevState,
+              error: null,
+            }));
+          }, 5000);
+          break;
+        case "invalid_reconnect":
+        case "invalid_token":
+        case "username_mismatch":
+        case "database_error":
         case "no_active_game":
         case "game_finished":
-          // Handle reconnection errors - match has ended/terminated
-          console.log("Match ended, showing countdown notification");
-          console.log("Setting matchEnded to true, message:", message);
+        case "game_not_found":
+          console.log("Fatal error, showing ErrorNotification:", message.type);
+          
+          localStorage.removeItem("gameID");
+          localStorage.removeItem("username");
+          localStorage.removeItem("isReconnecting");
+          
           setGameState((prevState: GameState) => ({
             ...prevState,
             matchEnded: true,
             matchEndedAt: Date.now(),
+            gameOver: true,
+            inQueue: false,
+            reason: message.message || `Error: ${message.type}`,
           }));
           break;
         default:
@@ -175,12 +240,46 @@ const useWebSocket = (): UseWebSocketReturn => {
 
   const makeMove = (column: number) => {
     if (gameState.gameId) {
-      sendMessage({ type: "make_move", column });
+      const userToken = localStorage.getItem("userToken") || undefined;
+      sendMessage({ type: "move", column, userToken });
     }
   };
 
   const reconnect = (username?: string, gameID?: string) => {
     const userToken = localStorage.getItem("userToken") || "";
+    
+    if (!userToken) {
+      console.error("Reconnect failed: userToken not found in localStorage");
+      setGameState((prevState: GameState) => ({
+        ...prevState,
+        matchEnded: true,
+        matchEndedAt: Date.now(),
+        gameOver: true,
+        inQueue: false,
+        reason: "No authentication token found. Please start a new game from the home page.",
+      }));
+      return;
+    }
+
+    if (!username && !gameID) {
+      console.error("Reconnect failed: either username or gameID is required");
+      setGameState((prevState: GameState) => ({
+        ...prevState,
+        matchEnded: true,
+        matchEndedAt: Date.now(),
+        gameOver: true,
+        inQueue: false,
+        reason: "Invalid reconnection attempt. Either username or game ID is required.",
+      }));
+      return;
+    }
+
+    console.log("Reconnecting with:", { 
+      username: username || "(not provided)", 
+      gameID: gameID || "(not provided)", 
+      hasToken: true 
+    });
+    
     sendMessage({
       type: "reconnect",
       username: username || "",

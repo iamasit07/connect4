@@ -9,57 +9,65 @@ import (
 	"github.com/iamasit07/4-in-a-row/backend/models"
 )
 
-// important part to manage websocket connections & operations
+// Connection holds a WebSocket connection with its username
+type Connection struct {
+	Username   string
+	Conn       *websocket.Conn
+	WriteMutex *sync.Mutex
+}
+
+// ConnectionManager manages websocket connections by userToken
 type ConnectionManager struct {
-	connections  map[string]*websocket.Conn  // username -> websocket connection
-	writeMutexes map[string]*sync.Mutex      // username -> write mutex for that connection
-	mu           sync.RWMutex
+	connections map[string]*Connection  // userToken → Connection
+	mu          sync.RWMutex
 }
 
 func NewConnectionManager() *ConnectionManager {
-	conn := &ConnectionManager{
-		connections:  make(map[string]*websocket.Conn),
-		writeMutexes: make(map[string]*sync.Mutex),
-		mu:           sync.RWMutex{},
+	return &ConnectionManager{
+		connections: make(map[string]*Connection),
+		mu:          sync.RWMutex{},
 	}
-	return conn
 }
 
-func (cm *ConnectionManager) AddConnection(username string, conn *websocket.Conn) error {
+func (cm *ConnectionManager) AddConnection(userToken, username string, conn *websocket.Conn) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	
-	if _, exists := cm.connections[username]; exists {
-		return fmt.Errorf("username already connected")
+	if _, exists := cm.connections[userToken]; exists {
+		return fmt.Errorf("token already connected")
 	}
 	
-	cm.connections[username] = conn
-	cm.writeMutexes[username] = &sync.Mutex{} // Create write mutex for this connection
+	cm.connections[userToken] = &Connection{
+		Username:   username,
+		Conn:       conn,
+		WriteMutex: &sync.Mutex{},
+	}
 	return nil
 }
 
-func (cm *ConnectionManager) RemoveConnection(username string) {
+func (cm *ConnectionManager) RemoveConnection(userToken string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	delete(cm.connections, username)
-	delete(cm.writeMutexes, username)
+	delete(cm.connections, userToken)
 }
 
-func (cm *ConnectionManager) GetConnection(username string) (*websocket.Conn, bool) {
+func (cm *ConnectionManager) GetConnection(userToken string) (*websocket.Conn, bool) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	conn, exists := cm.connections[username]
-	return conn, exists
+	connection, exists := cm.connections[userToken]
+	if !exists {
+		return nil, false
+	}
+	return connection.Conn, true
 }
 
-func (cm *ConnectionManager) SendMessage(username string, message models.ServerMessage) error {
+func (cm *ConnectionManager) SendMessage(userToken string, message models.ServerMessage) error {
 	cm.mu.RLock()
-	conn, exists := cm.connections[username]
-	writeMutex, mutexExists := cm.writeMutexes[username]
+	connection, exists := cm.connections[userToken]
 	cm.mu.RUnlock()
 	
-	if !exists || !mutexExists {
-		return fmt.Errorf("connection for username %s does not exist", username)
+	if !exists {
+		return fmt.Errorf("connection for token %s does not exist", userToken)
 	}
 
 	data, err := json.Marshal(message)
@@ -68,8 +76,8 @@ func (cm *ConnectionManager) SendMessage(username string, message models.ServerM
 	}
 
 	// Use per-connection write mutex to prevent concurrent writes
-	writeMutex.Lock()
-	defer writeMutex.Unlock()
+	connection.WriteMutex.Lock()
+	defer connection.WriteMutex.Unlock()
 	
-	return conn.WriteMessage(websocket.TextMessage, data)
+	return connection.Conn.WriteMessage(websocket.TextMessage, data)
 }

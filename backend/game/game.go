@@ -2,8 +2,6 @@ package game
 
 import "github.com/iamasit07/4-in-a-row/backend/models"
 
-// the purpose of this file is to check the overall game logic
-
 type Game struct {
 	Board [][]models.PlayerID
 	CurrentPlayer models.PlayerID
@@ -46,15 +44,14 @@ func (g *Game) MakeMove(player models.PlayerID, column int) (int, error) {
 	if CheckWin(g.Board, row, column, g.CurrentPlayer) {
 		g.Status = models.StatusWon
 		g.Winner = g.CurrentPlayer
-		return -1, nil
+		return row, nil
 	}
 
 	if IsBoardFull(g.Board) {
 		g.Status = models.StatusDraw
-		return -1, nil
+		return row, nil
 	}
 
-	// switch player
 	if g.CurrentPlayer == models.Player1 {
 		g.CurrentPlayer = models.Player2
 	} else {
