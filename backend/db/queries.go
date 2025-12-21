@@ -140,3 +140,65 @@ func GameExists(gameID string) (bool, error) {
 	}
 	return exists, nil
 }
+
+// GameResult represents the result of a finished game
+type GameResult struct {
+	GameID         string
+	Player1Token   string
+	Player1Username string
+	Player2Token   string
+	Player2Username string
+	WinnerToken    string
+	WinnerUsername string
+	Reason         string
+	TotalMoves     int
+	DurationSeconds int
+	CreatedAt      time.Time
+	FinishedAt     time.Time
+}
+
+// GetGameByID retrieves game details from the database by gameID
+func GetGameByID(gameID string) (*GameResult, error) {
+	query := `
+	SELECT game_id, player1_token, player1_username, player2_token, player2_username, 
+	       winner_token, winner_username, reason, total_moves, duration_seconds, 
+	       created_at, finished_at
+	FROM game 
+	WHERE game_id = $1;
+	`
+	
+	var result GameResult
+	var winnerToken, winnerUsername sql.NullString
+	
+	err := DB.QueryRow(query, gameID).Scan(
+		&result.GameID,
+		&result.Player1Token,
+		&result.Player1Username,
+		&result.Player2Token,
+		&result.Player2Username,
+		&winnerToken,
+		&winnerUsername,
+		&result.Reason,
+		&result.TotalMoves,
+		&result.DurationSeconds,
+		&result.CreatedAt,
+		&result.FinishedAt,
+	)
+	
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get game by ID: %v", err)
+	}
+	
+	if winnerToken.Valid {
+		result.WinnerToken = winnerToken.String
+	}
+	if winnerUsername.Valid {
+		result.WinnerUsername = winnerUsername.String
+	}
+	
+	return &result, nil
+}
+

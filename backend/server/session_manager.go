@@ -73,3 +73,56 @@ func (sm *SessionManager) RemoveSession(gameID string, player1Token, player2Toke
 	return nil
 }
 
+// GetSessionByGameIDAndUsername finds a session where the username matches a player
+// Used for token corruption recovery
+func (sm *SessionManager) GetSessionByGameIDAndUsername(gameID, username string) (*GameSession, string, bool) {
+	sm.Mux.Lock()
+	defer sm.Mux.Unlock()
+
+	session, exists := sm.Session[gameID]
+	if !exists {
+		return nil, "", false
+	}
+
+	// Check if username matches player1 or player2
+	if session.Player1Username == username {
+		return session, session.Player1Token, true
+	}
+	if session.Player2Username == username {
+		return session, session.Player2Token, true
+	}
+
+	return nil, "", false
+}
+
+// UpdatePlayerToken updates a player's token in the session and TokenToGame mapping
+// Used for token corruption recovery
+func (sm *SessionManager) UpdatePlayerToken(session *GameSession, oldToken, newToken, username string) error {
+	sm.Mux.Lock()
+	defer sm.Mux.Unlock()
+
+	session.mu.Lock()
+	defer session.mu.Unlock()
+
+	delete(sm.TokenToGame, oldToken)
+	sm.TokenToGame[newToken] = session.GameID
+
+	var targetToken *string
+	if session.Player1Username == username {
+		targetToken = &session.Player1Token
+	} else if session.Player2Username == username {
+		targetToken = &session.Player2Token
+	} else {
+		return fmt.Errorf("username not found in session")
+	}
+
+	playerID := session.PlayerMapping[oldToken]
+	delete(session.PlayerMapping, oldToken)
+	session.PlayerMapping[newToken] = playerID
+	*targetToken = newToken
+
+	fmt.Printf("[SESSION] Updated token for %s in session %s\n", username, session.GameID)
+	return nil
+}
+
+

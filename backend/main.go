@@ -150,6 +150,33 @@ func MatchMakingListener(queue *models.MatchmakingQueue, cm *websocket.Connectio
 			player2Token = config.AppConfig.BotToken
 		}
 
+		// Check if player2 (the matched opponent) has any active sessions
+		// Note: player1's active sessions are already handled in HandleJoinQueue
+		if player2Username != models.BotUsername {
+			player2Session, exists := sm.GetSessionByToken(player2Token)
+			if exists && !player2Session.Game.IsFinished() {
+				log.Printf("[MATCHMAKING] Player2 %s has active game %s - terminating it before new match",
+					player2Username, player2Session.GameID)
+				
+				// CRITICAL: Remove player2's connection before terminating
+				player2OpponentToken := player2Session.GetOpponentToken(player2Token)
+				cm.RemoveConnection(player2Token)
+				
+				// Terminate the session - opponent wins (only opponent gets game_over)
+				err := player2Session.TerminateSessionByAbandonment(player2Token, player2OpponentToken, cm)
+				if err != nil {
+					log.Printf("[MATCHMAKING] Failed to terminate player2's session: %v", err)
+				}
+				
+				// Remove from session manager
+				sm.RemoveSession(
+					player2Session.GameID,
+					player2Session.Player1Token,
+					player2Session.Player2Token,
+				)
+			}
+		}
+
 		// CreateSession will handle sending game_start messages
 		session := sm.CreateSession(player1Token, player1Username, player2Token, player2Username, cm)
 

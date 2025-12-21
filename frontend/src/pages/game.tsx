@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Board from "../components/board";
 import DisconnectNotification from "../components/DisconnectNotification";
-import MatchEndedNotification from "../components/MatchEndedNotification";
+import ErrorNotification from "../components/ErrorNotification";
 import useWebSocket from "../hooks/useWebSocket";
 
 const GamePage: React.FC = () => {
@@ -24,9 +24,27 @@ const GamePage: React.FC = () => {
     const username = localStorage.getItem("username");
     const storedGameID = localStorage.getItem("gameID");
 
-    // If we have gameID in URL, treat it as reconnection
-    if (urlGameID && urlGameID !== "queue") {
+    // ROUTE 1: /game/:gameID (specific game ID) → RECONNECT with gameID
+    if (urlGameID && urlGameID !== "queue" && urlGameID !== "reconnect") {
+      if (connected && !hasJoinedQueue.current) {
+        hasJoinedQueue.current = true;
+
+        setTimeout(() => {
+          console.log("Route: /game/:gameID - Attempting reconnect with gameID:", {
+            username: username || "(not provided)",
+            gameID: urlGameID,
+          });
+          // Username is optional - derived from token if not provided
+          reconnect(username || undefined, urlGameID);
+        }, 100);
+      }
+      return;
+    }
+
+    // ROUTE 2: /game/reconnect → RECONNECT with username (and optionally stored gameID)
+    if (urlGameID === "reconnect") {
       if (!username) {
+        console.warn("Username-based reconnect requires username, redirecting to home");
         navigate("/");
         return;
       }
@@ -34,54 +52,44 @@ const GamePage: React.FC = () => {
       if (connected && !hasJoinedQueue.current) {
         hasJoinedQueue.current = true;
 
-        // Add small delay to ensure WebSocket is fully ready
         setTimeout(() => {
-          console.log("Attempting to reconnect with URL gameID:", {
+          console.log("Route: /game/reconnect - Attempting reconnect with username:", {
             username,
-            gameID: urlGameID,
+            gameID: storedGameID || "(not provided)",
           });
-          reconnect(username, urlGameID);
+          // If we have stored gameID, use both; otherwise username-only
+          reconnect(username, storedGameID || undefined);
         }, 100);
       }
       return;
     }
 
-    // Handle normal flow
-    if (!username && !storedGameID) {
-      navigate("/");
+    // ROUTE 3: /game/queue → JOIN QUEUE (new game)
+    if (urlGameID === "queue") {
+      if (!username) {
+        console.warn("Queue requires username, redirecting to home");
+        navigate("/");
+        return;
+      }
+
+      // Clear any previous game state to ensure clean queue join
+      localStorage.removeItem("gameID");
+      localStorage.removeItem("isReconnecting");
+
+      if (connected && !hasJoinedQueue.current) {
+        hasJoinedQueue.current = true;
+
+        setTimeout(() => {
+          console.log("Route: /game/queue - Joining queue with username:", username);
+          joinQueue(username);
+        }, 100);
+      }
       return;
     }
 
-    if (connected && !hasJoinedQueue.current) {
-      hasJoinedQueue.current = true;
-
-      setTimeout(() => {
-        // If there's a stored gameID, always try to reconnect first
-        if (storedGameID) {
-          if (!username) {
-            // Invalid state: have gameID but no username
-            console.warn("Found gameID but no username, clearing state");
-            localStorage.removeItem("gameID");
-            navigate("/");
-            return;
-          }
-          console.log("Attempting to reconnect with:", {
-            username,
-            gameID: storedGameID,
-          });
-          localStorage.removeItem("isReconnecting");
-          reconnect(username, storedGameID);
-        } else {
-          // No stored gameID, join queue normally
-          if (!username) {
-            navigate("/");
-            return;
-          }
-          console.log("Joining queue with username:", username);
-          joinQueue(username);
-        }
-      }, 100);
-    }
+    // ROUTE 4: Invalid route, redirect to home
+    console.warn("Invalid game route, redirecting to home");
+    navigate("/");
   }, [connected, navigate, joinQueue, reconnect, urlGameID]);
 
   // Countdown timer for matchmaking queue
@@ -147,13 +155,16 @@ const GamePage: React.FC = () => {
     );
   }
 
-  // This ensures MatchEndedNotification shows even when gameId is null
+  // CRITICAL: Check for match ended BEFORE checking for gameId
+  // This prevents race conditions where reconnect fails but we still try to join queue
   if (gameState.matchEnded) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <MatchEndedNotification
-          matchEnded={gameState.matchEnded}
-          matchEndedAt={gameState.matchEndedAt}
+        <ErrorNotification
+          show={gameState.matchEnded}
+          triggeredAt={gameState.matchEndedAt}
+          title={gameState.reason ? "Error" : "Match Ended"}
+          reason={gameState.reason ?? undefined}
         />
       </div>
     );
@@ -245,10 +256,12 @@ const GamePage: React.FC = () => {
         disconnectedAt={gameState.disconnectedAt}
       />
 
-      {/* Match Ended Notification */}
-      <MatchEndedNotification
-        matchEnded={gameState.matchEnded}
-        matchEndedAt={gameState.matchEndedAt}
+      {/* Error Notification - Shows all backend errors */}
+      <ErrorNotification
+        show={gameState.matchEnded}
+        triggeredAt={gameState.matchEndedAt}
+        title={gameState.reason ? "Error" : "Match Ended"}
+        reason={gameState.reason ?? undefined}
       />
 
       {/* Error Message Display */}

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"crypto/rand"
 	"fmt"
 	"sync"
 	"time"
@@ -114,6 +115,13 @@ func (m *MatchmakingQueue) stopAndDeleteTimer(userToken string) {
 }
 
 func GenerateGameID() string {
-	id := time.Now().UnixNano()
-	return fmt.Sprintf("%d", id)
+	// Use crypto/rand for true randomness to prevent collisions
+	// This generates a 16-character hexadecimal string
+	b := make([]byte, 16)
+	_, err := rand.Read(b)
+	if err != nil {
+		// Fallback to timestamp if rand fails (very unlikely)
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%x", b)
 }

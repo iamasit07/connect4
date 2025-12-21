@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/iamasit07/4-in-a-row/backend/config"
+	"github.com/iamasit07/4-in-a-row/backend/db"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/server"
 )
@@ -45,7 +46,7 @@ func HandleWebSocket(message models.ClientMessage, conn *websocket.Conn,
 	case "join_queue":
 		HandleJoinQueue(message, conn, connManager, matchMakingQueue, sessionManager, tokenManager, currentUsername, currentToken, isAuthenticated)
 	case "move":
-		HandleMove(message, conn, sessionManager, connManager, *currentToken, *isAuthenticated)
+		HandleMove(message, conn, sessionManager, connManager, *currentToken, *currentUsername, *isAuthenticated, tokenManager)
 	case "reconnect":
 		HandleReconnect(message, conn, sessionManager, connManager, currentUsername, currentToken, isAuthenticated)
 	default:
@@ -82,7 +83,14 @@ func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
 		}
 	}
 
-	tokenManager.SetTokenUsername(userToken, message.Username)
+	// Only set token-username mapping if:
+	// 1. Token is new (doesn't exist in manager), OR
+	// 2. Token already belongs to this username (safe to overwrite)
+	existingMappedUser, tokenMapped := tokenManager.GetUsernameByToken(userToken)
+	if !tokenMapped || existingMappedUser == message.Username {
+		tokenManager.SetTokenUsername(userToken, message.Username)
+	}
+
 
 	*currentUsername = message.Username
 	*currentToken = userToken
@@ -92,10 +100,18 @@ func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
 	session, exists := sessionManager.GetSessionByToken(userToken)
 	if exists && !session.Game.IsFinished() {
 		log.Printf("[ABANDON] Player %s is abandoning game %s to join new queue", *currentUsername, session.GameID)
-		err := session.TerminateSession(userToken, "abandoned", connManager)
+		
+		// CRITICAL: Remove the abandoning player's connection BEFORE terminating
+		// This prevents game_over messages from bleeding into their new game
+		opponentToken := session.GetOpponentToken(userToken)
+		connManager.RemoveConnection(userToken)
+		
+		// Terminate the session (only opponent receives game_over now)
+		err := session.TerminateSessionByAbandonment(userToken, opponentToken, connManager)
 		if err != nil {
 			log.Printf("Failed to terminate abandoned session: %v", err)
 		}
+		
 		sessionManager.RemoveSession(
 			session.GameID,
 			session.Player1Token,
@@ -129,20 +145,39 @@ func HandleJoinQueue(message models.ClientMessage, conn *websocket.Conn,
 
 func HandleMove(message models.ClientMessage, conn *websocket.Conn,
 	sessionManager *server.SessionManager, connManager *ConnectionManager,
-	currentToken string, isAuthenticated bool) {
+	currentToken, currentUsername string, isAuthenticated bool,
+	tokenManager *TokenManager) {
 
 	if !isAuthenticated {
 		SendErrorMessage(conn, "not_authenticated", "You must join the queue first")
 		return
 	}
 
-	session, exists := sessionManager.GetSessionByToken(currentToken)
+	tokenToValidate := message.UserToken
+	if tokenToValidate == "" {
+		tokenToValidate = currentToken
+	}
+
+	if tokenToValidate != currentToken {
+		log.Printf("[CORRUPTION] Token mismatch: message token %s != connection token %s", 
+			tokenToValidate, currentToken)
+		HandleTokenCorruption(currentToken, currentUsername, sessionManager, connManager, "token_mismatch")
+		return
+	}
+
+	valid, reason := ValidatePlayerToken(tokenManager, sessionManager, tokenToValidate, currentUsername)
+	if !valid {
+		HandleTokenCorruption(tokenToValidate, currentUsername, sessionManager, connManager, reason)
+		return
+	}
+
+	session, exists := sessionManager.GetSessionByToken(tokenToValidate)
 	if !exists {
 		SendErrorMessage(conn, "no_active_game", "You are not in an active game")
 		return
 	}
 
-	err := session.HandleMove(currentToken, message.Column, connManager)
+	err := session.HandleMove(tokenToValidate, message.Column, connManager)
 	if err != nil {
 		SendErrorMessage(conn, "invalid_move", err.Error())
 		return
@@ -157,42 +192,102 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn,
 	gameID := message.GameID
 	userToken := message.UserToken
 
-	// SECURITY CHECK 1: Verify gameID exists
-	session, exists := sessionManager.GetSessionByGameID(gameID)
-	if !exists {
-		SendErrorMessage(conn, "game_not_found", "Game not found")
+	// UserToken is always required (primary identifier)
+	if userToken == "" {
+		SendErrorMessage(conn, "invalid_reconnect", "UserToken is required for reconnection")
 		return
 	}
 
-	// SECURITY CHECK 2: Verify game is not finished
+	// Must provide at least username OR gameID
+	if username == "" && gameID == "" {
+		SendErrorMessage(conn, "invalid_reconnect", "Either username or gameID is required")
+		return
+	}
+
+	var session *server.GameSession
+	var exists bool
+
+	// CASE 1: GameID provided (with or without username)
+	if gameID != "" {
+		session, exists = sessionManager.GetSessionByGameID(gameID)
+		if !exists {
+			// Session not in memory - check database to see if game is finished
+			log.Printf("[RECONNECT] Session %s not found in memory, checking database", gameID)
+			gameResult, err := db.GetGameByID(gameID)
+			if err != nil {
+				log.Printf("[RECONNECT] Database error checking game %s: %v", gameID, err)
+				SendErrorMessage(conn, "database_error", "Failed to check game status")
+				return
+			}
+			
+			if gameResult != nil {
+				// Game exists in database - it's finished
+				log.Printf("[RECONNECT] Game %s found in database - already finished", gameID)
+				SendErrorMessage(conn, "game_finished", "This game has already ended")
+				return
+			}
+			
+			// Game doesn't exist anywhere
+			SendErrorMessage(conn, "game_not_found", "Game not found")
+			return
+		}
+
+		// Verify token belongs to this game
+		if session.Player1Token != userToken && session.Player2Token != userToken {
+			log.Printf("[RECONNECT] Token %s not found in game %s", userToken, gameID)
+			SendErrorMessage(conn, "invalid_token", "Your token is not associated with this game")
+			return
+		}
+
+		// Derive username from token if not provided
+		if username == "" {
+			username = session.GetUsernameByToken(userToken)
+			log.Printf("[RECONNECT] Derived username %s from token for game %s", username, gameID)
+		} else {
+			// Username provided - validate it matches
+			sessionUsername := session.GetUsernameByToken(userToken)
+			if sessionUsername != username {
+				log.Printf("[RECONNECT] Username mismatch: provided %s, expected %s", username, sessionUsername)
+				SendErrorMessage(conn, "username_mismatch", "Username does not match your token")
+				return
+			}
+		}
+
+	} else if username != "" {
+		// CASE 2: Username-only (no gameID)
+		session, exists = sessionManager.GetSessionByToken(userToken)
+		if !exists {
+			log.Printf("[RECONNECT] No active game found for token %s", userToken)
+			SendErrorMessage(conn, "game_not_found", "No active game found for your account")
+			return
+		}
+
+		// Validate username matches token's game
+		sessionUsername := session.GetUsernameByToken(userToken)
+		if sessionUsername != username {
+			log.Printf("[RECONNECT] Username mismatch for token %s: provided %s, expected %s", 
+				userToken, username, sessionUsername)
+			SendErrorMessage(conn, "username_mismatch", "Username does not match your active game")
+			return
+		}
+
+		gameID = session.GameID
+		log.Printf("[RECONNECT] Found game %s for username %s via token lookup", gameID, username)
+	}
+
+	// SECURITY CHECK: Verify game is not finished
 	if session.Game.IsFinished() {
 		SendErrorMessage(conn, "game_finished", "Cannot reconnect to a finished game")
 		return
 	}
 
-	// SECURITY CHECK 3: Verify username matches a player in the game
-	isPlayer1 := username == session.Player1Username
-	isPlayer2 := username == session.Player2Username
-	if !isPlayer1 && !isPlayer2 {
-		SendErrorMessage(conn, "not_in_game", "You are not a player in this game")
-		return
+	// SECURITY CHECK: Remove stale connection if it exists
+	if _, exists := connManager.GetConnection(userToken); exists {
+		log.Printf("[RECONNECT] Removing stale connection for %s", username)
+		connManager.RemoveConnection(userToken)
 	}
 
-	// SECURITY CHECK 4: Verify user token matches
-	var expectedToken string
-	if isPlayer1 {
-		expectedToken = session.Player1Token
-	} else {
-		expectedToken = session.Player2Token
-	}
-
-	if expectedToken != userToken {
-		log.Printf("[RECONNECT] Token mismatch for %s in game %s", username, gameID)
-		SendErrorMessage(conn, "invalid_token", "Invalid user token")
-		return
-	}
-
-	// SECURITY CHECK 5: Verify game doesn't already have 2 active connections
+	// SECURITY CHECK: Verify game doesn't already have 2 active connections
 	activeConnections := 0
 	if _, exists := connManager.GetConnection(session.Player1Token); exists {
 		activeConnections++
@@ -208,14 +303,7 @@ func HandleReconnect(message models.ClientMessage, conn *websocket.Conn,
 		return
 	}
 
-	// SECURITY CHECK 6: Verify token is not currently connected
-	_, isConnected := connManager.GetConnection(userToken)
-	if isConnected {
-		SendErrorMessage(conn, "already_connected", "This token is already connected")
-		return
-	}
-
-	// SECURITY CHECK 7: Verify player is actually disconnected
+	// SECURITY CHECK: Verify player is actually disconnected
 	isDisconnected := false
 	for _, disconnectedToken := range session.DisconnectedPlayers {
 		if disconnectedToken == userToken {
@@ -252,6 +340,55 @@ func HandleDisconnectCleanUp(userToken string, sessionManager *server.SessionMan
 	if !session.Game.IsFinished() {
 		session.HandleDisconnect(userToken, connManager, sessionManager)
 	}
+}
+
+func ValidatePlayerToken(
+	tokenManager *TokenManager,
+	sessionManager *server.SessionManager,
+	userToken, expectedUsername string,
+) (valid bool, reason string) {
+
+	actualUsername, exists := tokenManager.GetUsernameByToken(userToken)
+	if !exists {
+		return false, "token_not_found"
+	}
+
+	if actualUsername != expectedUsername {
+		return false, "username_mismatch"
+	}
+
+	session, exists := sessionManager.GetSessionByToken(userToken)
+	if !exists {
+		return false, "no_active_session"
+	}
+
+	if session.Player1Token != userToken && session.Player2Token != userToken {
+		return false, "token_session_mismatch"
+	}
+
+	return true, ""
+}
+
+func HandleTokenCorruption(
+	corruptedToken, currentUsername string,
+	sessionManager *server.SessionManager,
+	connManager *ConnectionManager,
+	reason string,
+) {
+	log.Printf("[CORRUPTION] Token corruption detected for %s (token: %s), reason: %s",
+		currentUsername, corruptedToken, reason)
+
+	conn, exists := connManager.GetConnection(corruptedToken)
+	if exists {
+		SendErrorMessage(conn, "token_corrupted", "Your token is invalid. You have been disconnected. Please refresh and rejoin with correct credentials.")
+	}
+
+	session, exists := sessionManager.GetSessionByToken(corruptedToken)
+	if exists {
+		session.HandleDisconnect(corruptedToken, connManager, sessionManager)
+	}
+
+	connManager.RemoveConnection(corruptedToken)
 }
 
 func SendErrorMessage(conn *websocket.Conn, errorType, message string) {

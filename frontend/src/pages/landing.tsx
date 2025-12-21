@@ -17,6 +17,7 @@ const LandingPage = () => {
       return;
     }
 
+    // Clear any previous game/reconnect state
     localStorage.removeItem("gameID");
     localStorage.removeItem("isReconnecting");
     localStorage.setItem("username", username);
@@ -24,19 +25,28 @@ const LandingPage = () => {
   };
 
   const handleReconnect = () => {
+    // Require at least one: username OR gameID
     if (reconnectUsername.trim() === "" && reconnectGameID.trim() === "") {
-      alert("Please enter either your username or game ID");
+      alert("Please enter either your username or game ID to reconnect");
       return;
     }
 
-    if (reconnectUsername) {
+    // Store provided values
+    if (reconnectUsername.trim() !== "") {
       localStorage.setItem("username", reconnectUsername);
     }
-    if (reconnectGameID) {
+    if (reconnectGameID.trim() !== "") {
+      localStorage.setItem("gameID", reconnectGameID);
+    }
+    localStorage.setItem("isReconnecting", "true");
+
+    // Route based on what was provided
+    if (reconnectGameID.trim() !== "") {
+      // GameID provided - navigate to specific game
       navigate(`/game/${reconnectGameID}`);
     } else {
-      localStorage.setItem("isReconnecting", "true");
-      navigate("/game/queue");
+      // Username-only - navigate to reconnect route
+      navigate("/game/reconnect");
     }
   };
 
@@ -75,7 +85,7 @@ const LandingPage = () => {
             Reconnect to Game
           </h2>
           <p className="text-xs text-gray-600 mb-3">
-            Enter your Game ID to reconnect (check your game URL)
+            Enter either your Game ID or username to reconnect
           </p>
           <input
             type="text"

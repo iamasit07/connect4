@@ -22,14 +22,14 @@ type ConnectionManagerInterface interface {
 
 type GameSession struct {
 	GameID              string
-	Player1Token        string                      // Token-based identification
-	Player1Username     string                      // For display
-	Player2Token        string                      // Token-based identification
-	Player2Username     string                      // For display
+	Player1Token        string // Token-based identification
+	Player1Username     string // For display
+	Player2Token        string // Token-based identification
+	Player2Username     string // For display
 	Game                *game.Game
-	PlayerMapping       map[string]models.PlayerID  // userToken → PlayerID
+	PlayerMapping       map[string]models.PlayerID // userToken → PlayerID
 	Reason              string
-	DisconnectedPlayers []string                    // userTokens
+	DisconnectedPlayers []string // userTokens
 	ReconnectTimer      *time.Timer
 	CreatedAt           time.Time
 	FinishedAt          time.Time
@@ -70,15 +70,23 @@ func (gs *GameSession) GetOpponentToken(userToken string) string {
 	return gs.Player1Token
 }
 
+
 func (gs *GameSession) IsBot() bool {
 	return gs.Player2Username == models.BotUsername
 }
+
+func (gs *GameSession) cleanupConnections(conn ConnectionManagerInterface) {
+	conn.RemoveConnection(gs.Player1Token)
+	if !gs.IsBot() {
+		conn.RemoveConnection(gs.Player2Token)
+	}
+}
+
 
 func NewGameSession(player1Token, player1Username, player2Token, player2Username string, conn ConnectionManagerInterface) *GameSession {
 	gameID := utils.GenerateGameID()
 	newGame := (&game.Game{}).NewGame()
 
-	// Create token → PlayerID mapping
 	mapping := make(map[string]models.PlayerID)
 	mapping[player1Token] = models.Player1
 	mapping[player2Token] = models.Player2
@@ -95,7 +103,6 @@ func NewGameSession(player1Token, player1Username, player2Token, player2Username
 		mu:              sync.Mutex{},
 	}
 
-	// Send game start to player1
 	conn.SendMessage(player1Token, models.ServerMessage{
 		Type:        "game_start",
 		GameID:      gs.GameID,
@@ -105,7 +112,6 @@ func NewGameSession(player1Token, player1Username, player2Token, player2Username
 		CurrentTurn: int(gs.Game.CurrentPlayer),
 	})
 
-	// Send game start to player2 (if not bot)
 	if player2Username != models.BotUsername {
 		conn.SendMessage(player2Token, models.ServerMessage{
 			Type:        "game_start",
@@ -138,7 +144,6 @@ func (gs *GameSession) HandleMove(userToken string, column int, conn ConnectionM
 		return err
 	}
 
-	// Check for win
 	if gs.Game.Status == models.StatusWon {
 		gs.FinishedAt = time.Now()
 		winnerUsername := gs.GetUsername(gs.Game.Winner)
@@ -176,11 +181,7 @@ func (gs *GameSession) HandleMove(userToken string, column int, conn ConnectionM
 			conn.SendMessage(gs.Player2Token, gameOverMsg)
 		}
 
-		// Clean up connections
-		conn.RemoveConnection(gs.Player1Token)
-		if !gs.IsBot() {
-			conn.RemoveConnection(gs.Player2Token)
-		}
+		gs.cleanupConnections(conn)
 
 		return nil
 	}
@@ -221,11 +222,7 @@ func (gs *GameSession) HandleMove(userToken string, column int, conn ConnectionM
 			conn.SendMessage(gs.Player2Token, gameOverMsg)
 		}
 
-		// Clean up connections
-		conn.RemoveConnection(gs.Player1Token)
-		if !gs.IsBot() {
-			conn.RemoveConnection(gs.Player2Token)
-		}
+		gs.cleanupConnections(conn)
 
 		return nil
 	}
@@ -290,7 +287,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 			Board:  gs.Game.Board,
 		}
 		conn.SendMessage(gs.Player1Token, gameOverMsg)
-		conn.RemoveConnection(gs.Player1Token)
+		gs.cleanupConnections(conn)
 		return nil
 	}
 
@@ -324,7 +321,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 			Board:  gs.Game.Board,
 		}
 		conn.SendMessage(gs.Player1Token, gameOverMsg)
-		conn.RemoveConnection(gs.Player1Token)
+		gs.cleanupConnections(conn)
 		return nil
 	}
 
@@ -360,7 +357,7 @@ func (gs *GameSession) HandleDisconnect(userToken string, conn ConnectionManager
 	opponentToken := gs.GetOpponentToken(userToken)
 	if !gs.IsBot() {
 		conn.SendMessage(opponentToken, models.ServerMessage{
-			Type:    "player_disconnected",
+			Type:    "opponent_disconnected",
 			Message: fmt.Sprintf("%s disconnected", username),
 		})
 	}
@@ -389,9 +386,7 @@ func (gs *GameSession) HandleDisconnect(userToken string, conn ConnectionManager
 			log.Printf("[GAME] Error saving game: %v", err)
 		}
 
-		// Remove connections
-		conn.RemoveConnection(gs.Player1Token)
-		conn.RemoveConnection(gs.Player2Token)
+		gs.cleanupConnections(conn)
 
 		// Remove session
 		sessionManager.RemoveSession(gs.GameID, gs.Player1Token, gs.Player2Token)
@@ -445,7 +440,7 @@ func (gs *GameSession) HandleReconnect(userToken string, conn ConnectionManagerI
 	opponentToken := gs.GetOpponentToken(userToken)
 	if !gs.IsBot() {
 		conn.SendMessage(opponentToken, models.ServerMessage{
-			Type:    "player_reconnected",
+			Type:    "opponent_reconnected",
 			Message: fmt.Sprintf("%s reconnected", username),
 		})
 	}
@@ -456,6 +451,13 @@ func (gs *GameSession) HandleReconnect(userToken string, conn ConnectionManagerI
 func (gs *GameSession) HandleReconnectTimeout(userToken string, conn ConnectionManagerInterface, sessionManager *SessionManager) {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
+
+	// DEFENSIVE: Ignore timeout if game already finished
+	// This prevents race condition where timer fires after abandonment
+	if gs.Game.IsFinished() {
+		log.Printf("[TIMEOUT] Game %s already finished, ignoring reconnect timeout", gs.GameID)
+		return
+	}
 
 	username := gs.GetUsernameByToken(userToken)
 	opponentToken := gs.GetOpponentToken(userToken)
@@ -568,3 +570,61 @@ func (gs *GameSession) TerminateSession(userToken, reason string, conn Connectio
 
 	return nil
 }
+
+func (gs *GameSession) TerminateSessionByAbandonment(abandoningToken, opponentToken string, conn ConnectionManagerInterface) error {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	abandoningUsername := gs.GetUsernameByToken(abandoningToken)
+	opponentUsername := gs.GetOpponentUsername(abandoningToken)
+
+	log.Printf("[TERMINATE] Game %s terminated by abandonment from %s (%s)", 
+		gs.GameID, abandoningUsername, abandoningToken)
+
+	// CRITICAL: Stop reconnect timer if it exists
+	// This prevents the timer from firing later and sending game_over to player's new connection
+	if gs.ReconnectTimer != nil {
+		gs.ReconnectTimer.Stop()
+		gs.ReconnectTimer = nil
+		log.Printf("[TERMINATE] Canceled reconnect timer for game %s", gs.GameID)
+	}
+
+	gs.FinishedAt = time.Now()
+	gs.Reason = "abandoned"
+
+	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
+
+	// Save game - opponent wins
+	err := db.SaveGame(
+		gs.GameID,
+		gs.Player1Token, gs.Player1Username,
+		gs.Player2Token, gs.Player2Username,
+		opponentToken, opponentUsername,
+		gs.Reason,
+		gs.Game.MoveCount,
+		duration,
+		gs.CreatedAt,
+		gs.FinishedAt,
+	)
+	if err != nil {
+		log.Printf("[GAME] Error saving game: %v", err)
+	}
+
+	// Send game_over ONLY to opponent (abandoning player already disconnected)
+	gameOverMsg := models.ServerMessage{
+		Type:   "game_over",
+		Winner: opponentUsername,
+		Reason: "abandoned",
+	}
+
+	if !gs.IsBot() {
+		conn.SendMessage(opponentToken, gameOverMsg)
+		// Clean up opponent connection
+		conn.RemoveConnection(opponentToken)
+	}
+
+	// Note: Abandoning player's connection already removed by caller
+
+	return nil
+}
+
