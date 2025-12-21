@@ -135,7 +135,6 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "token_corrupted":
-          // Token corruption detected - clear everything and redirect
           console.error("Token corruption detected, clearing session and redirecting");
           localStorage.removeItem("gameID");
           localStorage.removeItem("username");
@@ -163,19 +162,18 @@ const useWebSocket = (): UseWebSocketReturn => {
         case "game_full":
         case "already_connected":
         case "not_disconnected":
-          // Handle minor error messages (temporary flash)
           console.error(`Server error [${message.type}]:`, message.message);
           setGameState((prevState: GameState) => ({
             ...prevState,
             error: message.message || `Error: ${message.type}`,
           }));
-          // Clear error after 10 seconds
+          // Clear error after 5 seconds
           setTimeout(() => {
             setGameState((prevState: GameState) => ({
               ...prevState,
               error: null,
             }));
-          }, 10000);
+          }, 5000);
           break;
         case "invalid_reconnect":
         case "invalid_token":
@@ -184,7 +182,6 @@ const useWebSocket = (): UseWebSocketReturn => {
         case "no_active_game":
         case "game_finished":
         case "game_not_found":
-          // Fatal errors - show ErrorNotification with redirect
           console.log("Fatal error, showing ErrorNotification:", message.type);
           
           localStorage.removeItem("gameID");
@@ -251,10 +248,8 @@ const useWebSocket = (): UseWebSocketReturn => {
   const reconnect = (username?: string, gameID?: string) => {
     const userToken = localStorage.getItem("userToken") || "";
     
-    // UserToken is always required
     if (!userToken) {
       console.error("Reconnect failed: userToken not found in localStorage");
-      // Show ErrorNotification instead of silently failing
       setGameState((prevState: GameState) => ({
         ...prevState,
         matchEnded: true,
@@ -266,10 +261,8 @@ const useWebSocket = (): UseWebSocketReturn => {
       return;
     }
 
-    // At least username OR gameID must be provided
     if (!username && !gameID) {
       console.error("Reconnect failed: either username or gameID is required");
-      // Show ErrorNotification for invalid reconnect attempt
       setGameState((prevState: GameState) => ({
         ...prevState,
         matchEnded: true,
