@@ -13,81 +13,45 @@ const GamePage: React.FC = () => {
   const hasJoinedQueue = useRef(false);
   const [, forceUpdate] = React.useState(0);
 
-  // Navigate to correct URL when game starts
+  // Update URL when game starts WITHOUT causing component remount
   useEffect(() => {
     if (gameState.gameId && urlGameID !== gameState.gameId) {
-      navigate(`/game/${gameState.gameId}`, { replace: true });
+      window.history.replaceState(null, '', `/game/${gameState.gameId}`);
+      console.log(`Updated URL to /game/${gameState.gameId} without remounting`);
     }
-  }, [gameState.gameId, urlGameID, navigate]);
+  }, [gameState.gameId, urlGameID]);
 
   useEffect(() => {
-    const username = localStorage.getItem("username");
-    const storedGameID = localStorage.getItem("gameID");
-
-    // ROUTE 1: /game/:gameID (specific game ID) → RECONNECT with gameID
-    if (urlGameID && urlGameID !== "queue" && urlGameID !== "reconnect") {
+    // ROUTE 1: /game/:gameID (specific game ID) → RECONNECT
+    if (urlGameID && urlGameID !== "queue") {
       if (connected && !hasJoinedQueue.current) {
         hasJoinedQueue.current = true;
 
         setTimeout(() => {
-          console.log("Route: /game/:gameID - Attempting reconnect with gameID:", {
-            username: username || "(not provided)",
-            gameID: urlGameID,
-          });
-          // Username is optional - derived from token if not provided
-          reconnect(username || undefined, urlGameID);
+          console.log("Reconnecting to game:", urlGameID);
+          reconnect(urlGameID);
         }, 100);
       }
       return;
     }
 
-    // ROUTE 2: /game/reconnect → RECONNECT with username (and optionally stored gameID)
-    if (urlGameID === "reconnect") {
-      if (!username) {
-        console.warn("Username-based reconnect requires username, redirecting to home");
-        navigate("/");
-        return;
-      }
-
-      if (connected && !hasJoinedQueue.current) {
-        hasJoinedQueue.current = true;
-
-        setTimeout(() => {
-          console.log("Route: /game/reconnect - Attempting reconnect with username:", {
-            username,
-            gameID: storedGameID || "(not provided)",
-          });
-          // If we have stored gameID, use both; otherwise username-only
-          reconnect(username, storedGameID || undefined);
-        }, 100);
-      }
-      return;
-    }
-
-    // ROUTE 3: /game/queue → JOIN QUEUE (new game)
+    // ROUTE 2: /game/queue → JOIN QUEUE (new game)
     if (urlGameID === "queue") {
-      if (!username) {
-        console.warn("Queue requires username, redirecting to home");
-        navigate("/");
-        return;
-      }
-
-      // Clear any previous game state to ensure clean queue join
-      localStorage.removeItem("gameID");
-      localStorage.removeItem("isReconnecting");
-
       if (connected && !hasJoinedQueue.current) {
         hasJoinedQueue.current = true;
 
+        // Clear any previous game state
+        localStorage.removeItem("gameID");
+
         setTimeout(() => {
-          console.log("Route: /game/queue - Joining queue with username:", username);
-          joinQueue(username);
+          console.log("Joining matchmaking queue");
+          joinQueue();
         }, 100);
       }
       return;
     }
 
-    // ROUTE 4: Invalid route, redirect to home
+    // Invalid route, redirect to home
     console.warn("Invalid game route, redirecting to home");
     navigate("/");
   }, [connected, navigate, joinQueue, reconnect, urlGameID]);
@@ -113,7 +77,6 @@ const GamePage: React.FC = () => {
   };
 
   const handlePlayAgain = () => {
-    localStorage.removeItem("username");
     navigate("/");
   };
 
@@ -125,7 +88,8 @@ const GamePage: React.FC = () => {
     return "bg-gray-50";
   };
 
-  if (!connected) {
+  // Only show "Connecting..." if not connected AND game is not over/ended
+  if (!connected && !gameState.gameOver && !gameState.matchEnded) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <p className="text-gray-600">Connecting...</p>
@@ -155,8 +119,7 @@ const GamePage: React.FC = () => {
     );
   }
 
-  // CRITICAL: Check for match ended BEFORE checking for gameId
-  // This prevents race conditions where reconnect fails but we still try to join queue
+  // Check for match ended
   if (gameState.matchEnded) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -256,7 +219,7 @@ const GamePage: React.FC = () => {
         disconnectedAt={gameState.disconnectedAt}
       />
 
-      {/* Error Notification - Shows all backend errors */}
+      {/* Error Notification */}
       <ErrorNotification
         show={gameState.matchEnded}
         triggeredAt={gameState.matchEndedAt}

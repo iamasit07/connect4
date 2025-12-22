@@ -32,13 +32,11 @@ export interface ServerMessage {
   winner?: string;
   reason?: string;
   message?: string;
-  userToken?: string;
 }
 
 export interface ClientMessage {
   type: "join_queue" | "move" | "reconnect";
-  username?: string;
+  jwt: string;
   gameID?: string;
   column?: number;
-  userToken?: string;
 }
