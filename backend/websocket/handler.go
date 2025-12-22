@@ -10,7 +10,6 @@ import (
 	"github.com/iamasit07/4-in-a-row/backend/utils"
 )
 
-// HandleConnection manages a single WebSocket connection
 func HandleConnection(conn *websocket.Conn, connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, sessionManager *server.SessionManager) {
 	defer conn.Close()
 
@@ -44,13 +43,11 @@ func HandleConnection(conn *websocket.Conn, connManager *ConnectionManager, matc
 			continue
 		}
 
-		// On first authentication, register connection
 		if !isAuthenticated {
 			currentUserID = claims.UserID
 			currentUsername = claims.Username
 			isAuthenticated = true
 
-			// Check for existing connection (multi-device handling)
 			if _, exists := connManager.GetConnection(currentUserID); exists {
 				log.Printf("[WS] User %d (%s) connecting from new device, disconnecting old session", currentUserID, currentUsername)
 				connManager.DisconnectUser(currentUserID, "Logged in from another device")
@@ -60,18 +57,15 @@ func HandleConnection(conn *websocket.Conn, connManager *ConnectionManager, matc
 			log.Printf("[WS] User %d (%s) authenticated and connected", currentUserID, currentUsername)
 		}
 
-		// Verify JWT claims match current user
 		if claims.UserID != currentUserID {
 			SendErrorMessage(conn, "token_mismatch", "JWT token does not match current user")
 			continue
 		}
 
-		// Route message to appropriate handler
 		HandleWebSocket(message, conn, connManager, matchMakingQueue, sessionManager, currentUserID, currentUsername)
 	}
 }
 
-// HandleWebSocket routes messages to appropriate handlers
 func HandleWebSocket(message models.ClientMessage, conn *websocket.Conn, connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, sessionManager *server.SessionManager, userID int64, username string) {
 	switch message.Type {
 	case "join_queue":
@@ -85,17 +79,14 @@ func HandleWebSocket(message models.ClientMessage, conn *websocket.Conn, connMan
 	}
 }
 
-// HandleJoinQueue handles a player joining the matchmaking queue
 func HandleJoinQueue(userID int64, username string, connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, sessionManager *server.SessionManager) {
 	log.Printf("[QUEUE] User %d (%s) attempting to join queue", userID, username)
 
-	// Check if user already has an active game
 	if sessionManager.HasActiveGame(userID) {
 		session, _ := sessionManager.GetSessionByUserID(userID)
 		if session != nil {
 			log.Printf("[QUEUE] User %d (%s) has active game %s - terminating it", userID, username, session.GameID)
 
-			// Terminate the old game
 			err := session.TerminateSessionByAbandonment(userID, connManager)
 			if err != nil {
 				log.Printf("[QUEUE] Failed to terminate user's session: %v", err)
@@ -105,7 +96,6 @@ func HandleJoinQueue(userID int64, username string, connManager *ConnectionManag
 		}
 	}
 
-	// Add to matchmaking queue
 	err := matchMakingQueue.AddPlayerToQueue(userID, username)
 	if err != nil {
 		log.Printf("[QUEUE] Error adding user to queue: %v", err)
@@ -116,7 +106,6 @@ func HandleJoinQueue(userID int64, username string, connManager *ConnectionManag
 		return
 	}
 
-	// Send confirmation
 	connManager.SendMessage(userID, models.ServerMessage{
 		Type:    "queue_joined",
 		Message: "Joined matchmaking queue",
@@ -125,7 +114,6 @@ func HandleJoinQueue(userID int64, username string, connManager *ConnectionManag
 	log.Printf("[QUEUE] User %d (%s) successfully joined queue", userID, username)
 }
 
-// HandleMove handles a game move
 func HandleMove(message models.ClientMessage, userID int64, sessionManager *server.SessionManager, connManager *ConnectionManager) {
 	session, exists := sessionManager.GetSessionByUserID(userID)
 	if !exists {
@@ -147,7 +135,6 @@ func HandleMove(message models.ClientMessage, userID int64, sessionManager *serv
 	}
 }
 
-// HandleReconnect handles a player reconnecting to their game
 func HandleReconnect(message models.ClientMessage, userID int64, sessionManager *server.SessionManager, connManager *ConnectionManager) {
 	log.Printf("[RECONNECT] User %d attempting to reconnect", userID)
 
@@ -155,7 +142,6 @@ func HandleReconnect(message models.ClientMessage, userID int64, sessionManager 
 	var session *server.GameSession
 	var isPlayer bool
 
-	// If gameID not provided, try to find user's active game
 	if message.GameID == "" {
 		log.Printf("[RECONNECT] No gameID provided, looking up user %d's active game", userID)
 		session, isPlayer = sessionManager.GetSessionByUserID(userID)
@@ -169,22 +155,17 @@ func HandleReconnect(message models.ClientMessage, userID int64, sessionManager 
 		gameID = session.GameID
 		log.Printf("[RECONNECT] Found active game %s for user %d", gameID, userID)
 	} else {
-		// GameID provided, validate it
 		gameID = message.GameID
 		session, isPlayer = sessionManager.GetSessionByGameIDAndUserID(gameID, userID)
 		if !isPlayer {
-			// Check if game exists at all
 			sessionByID, exists := sessionManager.GetSessionByGameID(gameID)
 			if !exists {
-				// Game doesn't exist - likely finished and removed
 				connManager.SendMessage(userID, models.ServerMessage{
 					Type:    "game_finished",
 					Message: "This game has already ended",
 				})
 				return
 			}
-			
-			// Game exists but user is not a player
 			if sessionByID.Game.IsFinished() {
 				connManager.SendMessage(userID, models.ServerMessage{
 					Type:    "game_finished",
@@ -200,7 +181,6 @@ func HandleReconnect(message models.ClientMessage, userID int64, sessionManager 
 		}
 	}
 
-	// Check if game is finished
 	if session.Game.IsFinished() {
 		connManager.SendMessage(userID, models.ServerMessage{
 			Type:    "game_finished",
@@ -209,7 +189,6 @@ func HandleReconnect(message models.ClientMessage, userID int64, sessionManager 
 		return
 	}
 
-	// Handle reconnection
 	err := session.HandleReconnect(userID, connManager)
 	if err != nil {
 		log.Printf("[RECONNECT] Error reconnecting user %d: %v", userID, err)
@@ -223,7 +202,6 @@ func HandleReconnect(message models.ClientMessage, userID int64, sessionManager 
 	log.Printf("[RECONNECT] User %d successfully reconnected to game %s", userID, gameID)
 }
 
-// HandleDisconnect handles player disconnection
 func HandleDisconnect(userID int64, connManager *ConnectionManager, sessionManager *server.SessionManager) {
 	session, exists := sessionManager.GetSessionByUserID(userID)
 	if !exists {
@@ -237,7 +215,6 @@ func HandleDisconnect(userID int64, connManager *ConnectionManager, sessionManag
 	}
 }
 
-// SendErrorMessage sends an error message to a connection
 func SendErrorMessage(conn *websocket.Conn, errorType, message string) {
 	conn.WriteJSON(models.ServerMessage{
 		Type:    errorType,
@@ -245,11 +222,10 @@ func SendErrorMessage(conn *websocket.Conn, errorType, message string) {
 	})
 }
 
-// CreateUpgrader creates a WebSocket upgrader with proper CORS settings
 func CreateUpgrader() websocket.Upgrader {
 	return websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			return true // Allow all origins in development
+			return true
 		},
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,

@@ -13,7 +13,6 @@ const GamePage: React.FC = () => {
   const hasJoinedQueue = useRef(false);
   const [, forceUpdate] = React.useState(0);
 
-  // Update URL when game starts WITHOUT causing component remount
   useEffect(() => {
     if (gameState.gameId && urlGameID !== gameState.gameId) {
       window.history.replaceState(null, '', `/game/${gameState.gameId}`);
@@ -22,7 +21,6 @@ const GamePage: React.FC = () => {
   }, [gameState.gameId, urlGameID]);
 
   useEffect(() => {
-    // ROUTE 1: /game/:gameID (specific game ID) → RECONNECT
     if (urlGameID && urlGameID !== "queue") {
       if (connected && !hasJoinedQueue.current) {
         hasJoinedQueue.current = true;
@@ -34,13 +32,10 @@ const GamePage: React.FC = () => {
       }
       return;
     }
-
-    // ROUTE 2: /game/queue → JOIN QUEUE (new game)
     if (urlGameID === "queue") {
       if (connected && !hasJoinedQueue.current) {
         hasJoinedQueue.current = true;
 
-        // Clear any previous game state
         localStorage.removeItem("gameID");
 
         setTimeout(() => {
@@ -50,26 +45,22 @@ const GamePage: React.FC = () => {
       }
       return;
     }
-
-    // ROUTE 3: /game (no param) → AUTO-RECONNECT (find user's active game)
     if (!urlGameID) {
       if (connected && !hasJoinedQueue.current) {
         hasJoinedQueue.current = true;
 
         setTimeout(() => {
           console.log("Auto-reconnecting to active game");
-          reconnect(""); // Empty string = auto-find active game
+          reconnect("");
         }, 100);
       }
       return;
     }
 
-    // Invalid route, redirect to home
     console.warn("Invalid game route, redirecting to home");
     navigate("/");
   }, [connected, navigate, joinQueue, reconnect, urlGameID]);
 
-  // Countdown timer for matchmaking queue
   useEffect(() => {
     if (gameState.inQueue && gameState.queuedAt) {
       const interval = setInterval(() => {
@@ -93,7 +84,6 @@ const GamePage: React.FC = () => {
     navigate("/");
   };
 
-  // Determine background color based on turn
   const getBackgroundColor = () => {
     if (gameState.gameOver) return "bg-gray-50";
     if (gameState.currentTurn === 1) return "bg-yellow-50";
@@ -101,7 +91,6 @@ const GamePage: React.FC = () => {
     return "bg-gray-50";
   };
 
-  // Only show "Connecting..." if not connected AND game is not over/ended
   if (!connected && !gameState.gameOver && !gameState.matchEnded) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -132,7 +121,6 @@ const GamePage: React.FC = () => {
     );
   }
 
-  // Check for match ended
   if (gameState.matchEnded) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -158,14 +146,12 @@ const GamePage: React.FC = () => {
     <div
       className={`flex flex-col items-center justify-center min-h-screen ${getBackgroundColor()} gap-6 p-4`}
     >
-      {/* Game ID Display */}
       {gameState.gameId && (
         <div className="text-xs text-gray-500 font-mono">
           Game ID: {gameState.gameId}
         </div>
       )}
 
-      {/* Turn Indicator Banner */}
       {!gameState.gameOver && gameState.currentTurn && (
         <div
           className={`w-full max-w-md px-4 py-2 rounded text-center font-bold ${
@@ -188,7 +174,6 @@ const GamePage: React.FC = () => {
           </h2>
         ) : (
           <div className="space-y-2">
-            {/* Color Legend */}
             <div className="flex items-center justify-center gap-4 text-sm text-gray-700 bg-white px-3 py-2 rounded border border-gray-200">
               <span className="flex items-center gap-2">
                 <span className="inline-block w-4 h-4 rounded-full bg-yellow-400"></span>
@@ -226,13 +211,11 @@ const GamePage: React.FC = () => {
         </button>
       )}
 
-      {/* Disconnect Notification */}
       <DisconnectNotification
         isDisconnected={gameState.opponentDisconnected}
         disconnectedAt={gameState.disconnectedAt}
       />
 
-      {/* Error Notification */}
       <ErrorNotification
         show={gameState.matchEnded}
         triggeredAt={gameState.matchEndedAt}
@@ -240,7 +223,6 @@ const GamePage: React.FC = () => {
         reason={gameState.reason ?? undefined}
       />
 
-      {/* Error Message Display */}
       {gameState.error && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 max-w-md text-center">
           {gameState.error}

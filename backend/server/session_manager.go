@@ -6,14 +6,12 @@ import (
 	"sync"
 )
 
-// SessionManager manages all active game sessions
 type SessionManager struct {
 	Session    map[string]*GameSession // gameID → GameSession
 	UserToGame map[int64]string        // userID → gameID (for quick lookup)
 	Mux        *sync.Mutex
 }
 
-// NewSessionManager creates a new session manager
 func NewSessionManager() *SessionManager {
 	return &SessionManager{
 		Session:    make(map[string]*GameSession),
@@ -22,12 +20,10 @@ func NewSessionManager() *SessionManager {
 	}
 }
 
-// CreateSession creates a new game session
 func (sm *SessionManager) CreateSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, conn ConnectionManagerInterface) *GameSession {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
 
-	// Create new game session with user IDs
 	session := NewGameSession(player1ID, player1Username, player2ID, player2Username, conn)
 	gameID := session.GameID
 	sm.Session[gameID] = session
@@ -42,7 +38,6 @@ func (sm *SessionManager) CreateSession(player1ID int64, player1Username string,
 	return session
 }
 
-// GetSessionByUserID retrieves a session by user ID
 func (sm *SessionManager) GetSessionByUserID(userID int64) (*GameSession, bool) {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
@@ -56,7 +51,6 @@ func (sm *SessionManager) GetSessionByUserID(userID int64) (*GameSession, bool) 
 	return session, exists
 }
 
-// GetSessionByGameID retrieves a session by game ID
 func (sm *SessionManager) GetSessionByGameID(gameID string) (*GameSession, bool) {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
@@ -65,7 +59,6 @@ func (sm *SessionManager) GetSessionByGameID(gameID string) (*GameSession, bool)
 	return session, exists
 }
 
-// GetSessionByGameIDAndUserID retrieves a session and verifies the user is a player
 func (sm *SessionManager) GetSessionByGameIDAndUserID(gameID string, userID int64) (*GameSession, bool) {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
@@ -75,7 +68,6 @@ func (sm *SessionManager) GetSessionByGameIDAndUserID(gameID string, userID int6
 		return nil, false
 	}
 
-	// Verify user is actually in this game
 	if session.Player1ID == userID {
 		return session, true
 	}
@@ -86,7 +78,6 @@ func (sm *SessionManager) GetSessionByGameIDAndUserID(gameID string, userID int6
 	return nil, false
 }
 
-// RemoveSession removes a session by game ID
 func (sm *SessionManager) RemoveSession(gameID string) error {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
@@ -98,19 +89,16 @@ func (sm *SessionManager) RemoveSession(gameID string) error {
 
 	log.Printf("[SESSION] Removing session %s", gameID)
 
-	// Remove from UserToGame mapping
 	delete(sm.UserToGame, session.Player1ID)
 	if session.Player2ID != nil {
 		delete(sm.UserToGame, *session.Player2ID)
 	}
 
-	// Remove session
 	delete(sm.Session, gameID)
 
 	return nil
 }
 
-// HasActiveGame checks if a user has an active game
 func (sm *SessionManager) HasActiveGame(userID int64) bool {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
@@ -122,7 +110,6 @@ func (sm *SessionManager) HasActiveGame(userID int64) bool {
 
 	session, exists := sm.Session[gameID]
 	if !exists {
-		// Clean up orphaned mapping
 		delete(sm.UserToGame, userID)
 		return false
 	}

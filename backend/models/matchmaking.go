@@ -1,8 +1,6 @@
 package models
 
 import (
-	"crypto/rand"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -42,14 +40,12 @@ func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string) error
 	}
 
 	if len(m.WaitingPlayers) == 0 {
-		// First player in queue, start bot timer
 		m.WaitingPlayers[userID] = username
 		timer := time.AfterFunc(10*time.Second, func() {
 			m.HandleTimeout(userID)
 		})
 		(*m.Timer)[userID] = timer
 	} else {
-		// Match with waiting player
 		var opponentID int64
 		var opponentUsername string
 		for uid, name := range m.WaitingPlayers {
@@ -88,7 +84,7 @@ func (m *MatchmakingQueue) HandleTimeout(userID int64) {
 	match := Match{
 		Player1ID:       userID,
 		Player1Username: username,
-		Player2ID:       nil, // BOT
+		Player2ID:       nil,
 		Player2Username: BotUsername,
 	}
 
@@ -112,13 +108,4 @@ func (m *MatchmakingQueue) stopAndDeleteTimer(userID int64) {
 		timer.Stop()
 	}
 	delete(*m.Timer, userID)
-}
-
-func GenerateGameID() string {
-	b := make([]byte, 16)
-	_, err := rand.Read(b)
-	if err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	return fmt.Sprintf("%x", b)
 }

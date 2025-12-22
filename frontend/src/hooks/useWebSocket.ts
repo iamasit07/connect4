@@ -62,7 +62,6 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_start":
-          // Save gameID to localStorage for reconnection
           if (message.gameId) {
             localStorage.setItem("gameID", message.gameId);
           }
@@ -102,9 +101,7 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_over":
-          // Clear gameID when game ends
           localStorage.removeItem("gameID");
-
           setGameState((prevState: GameState) => ({
             ...prevState,
             gameOver: true,
@@ -130,19 +127,16 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "force_disconnect":
-          // User was logged in from another device
           console.log("Force disconnect:", message.message);
           localStorage.removeItem("authToken");
           localStorage.removeItem("gameID");
           
-          // Redirect to login
           navigate("/login");
           alert(message.message || "You have been logged out");
           break;
         case "not_authenticated":
         case "invalid_token":
         case "token_mismatch":
-          // JWT authentication failed
           console.error("Authentication error:", message.message);
           localStorage.removeItem("authToken");
           navigate("/login");
@@ -156,7 +150,6 @@ const useWebSocket = (): UseWebSocketReturn => {
             ...prevState,
             error: message.message || `Error: ${message.type}`,
           }));
-          // Clear error after 5 seconds
           setTimeout(() => {
             setGameState((prevState: GameState) => ({
               ...prevState,
@@ -170,7 +163,6 @@ const useWebSocket = (): UseWebSocketReturn => {
         case "game_finished":
         case "game_not_found":
           console.log("Fatal error:", message.type);
-          
           localStorage.removeItem("gameID");
           
           setGameState((prevState: GameState) => ({
