@@ -5,13 +5,14 @@ import {
   PlayerID,
   ServerMessage,
 } from "../types/game";
+import { useNavigate } from "react-router-dom";
 
 interface UseWebSocketReturn {
   connected: boolean;
   gameState: GameState;
-  joinQueue: (username: string) => void;
+  joinQueue: () => void;
   makeMove: (column: number) => void;
-  reconnect: (username?: string, gameID?: string) => void;
+  reconnect: (gameID?: string) => void;
 }
 
 const useWebSocket = (): UseWebSocketReturn => {
@@ -37,6 +38,7 @@ const useWebSocket = (): UseWebSocketReturn => {
   });
 
   const ws = useRef<WebSocket | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
@@ -53,11 +55,6 @@ const useWebSocket = (): UseWebSocketReturn => {
 
       switch (message.type) {
         case "queue_joined":
-          // Save userToken if provided by backend
-          if (message.userToken) {
-            localStorage.setItem("userToken", message.userToken);
-            console.log("Saved userToken:", message.userToken);
-          }
           setGameState((prevState: GameState) => ({
             ...prevState,
             inQueue: true,
@@ -65,7 +62,7 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_start":
-          // Save gameID to localStorage for automatic reconnection
+          // Save gameID to localStorage for reconnection
           if (message.gameId) {
             localStorage.setItem("gameID", message.gameId);
           }
@@ -105,9 +102,8 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_over":
-          // Clear gameID from localStorage when game ends
+          // Clear gameID when game ends
           localStorage.removeItem("gameID");
-          localStorage.removeItem("isReconnecting");
 
           setGameState((prevState: GameState) => ({
             ...prevState,
@@ -118,7 +114,6 @@ const useWebSocket = (): UseWebSocketReturn => {
             opponentDisconnected: false,
             disconnectedAt: null,
           }));
-          
           break;
         case "opponent_disconnected":
           setGameState((prevState: GameState) => ({
@@ -134,34 +129,28 @@ const useWebSocket = (): UseWebSocketReturn => {
             disconnectedAt: null,
           }));
           break;
-        case "token_corrupted":
-          console.error("Token corruption detected, clearing session and redirecting");
+        case "force_disconnect":
+          // User was logged in from another device
+          console.log("Force disconnect:", message.message);
+          localStorage.removeItem("authToken");
           localStorage.removeItem("gameID");
-          localStorage.removeItem("username");
-          localStorage.removeItem("userToken");
-          localStorage.removeItem("isReconnecting");
           
-          setGameState((prevState: GameState) => ({
-            ...prevState,
-            reason: message.message || "Your authentication token was corrupted or modified. Please rejoin with correct credentials.",
-            matchEnded: true,
-            matchEndedAt: Date.now(),
-            gameOver: true,
-            inQueue: false,
-          }));
-          
-          // Redirect to home after 10 seconds (handled by MatchEndedNotification)
+          // Redirect to login
+          navigate("/login");
+          alert(message.message || "You have been logged out");
+          break;
+        case "not_authenticated":
+        case "invalid_token":
+        case "token_mismatch":
+          // JWT authentication failed
+          console.error("Authentication error:", message.message);
+          localStorage.removeItem("authToken");
+          navigate("/login");
           break;
         case "error":
-        case "invalid_username":
-        case "token_taken":
         case "queue_error":
         case "invalid_move":
         case "not_your_turn":
-        case "not_in_game":
-        case "game_full":
-        case "already_connected":
-        case "not_disconnected":
           console.error(`Server error [${message.type}]:`, message.message);
           setGameState((prevState: GameState) => ({
             ...prevState,
@@ -175,18 +164,14 @@ const useWebSocket = (): UseWebSocketReturn => {
             }));
           }, 5000);
           break;
-        case "invalid_reconnect":
-        case "invalid_token":
-        case "username_mismatch":
-        case "database_error":
+        case "reconnect_failed":
         case "no_active_game":
+        case "not_in_game":
         case "game_finished":
         case "game_not_found":
-          console.log("Fatal error, showing ErrorNotification:", message.type);
+          console.log("Fatal error:", message.type);
           
           localStorage.removeItem("gameID");
-          localStorage.removeItem("username");
-          localStorage.removeItem("isReconnecting");
           
           setGameState((prevState: GameState) => ({
             ...prevState,
@@ -217,7 +202,7 @@ const useWebSocket = (): UseWebSocketReturn => {
         ws.current.close();
       }
     };
-  }, []);
+  }, [navigate]);
 
   const sendMessage = (message: ClientMessage) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -231,60 +216,62 @@ const useWebSocket = (): UseWebSocketReturn => {
     }
   };
 
-  const joinQueue = (username: string) => {
-    console.log("joinQueue called with username:", username);
-    // Get existing userToken from localStorage (if any)
-    const userToken = localStorage.getItem("userToken") || undefined;
-    sendMessage({ type: "join_queue", username, userToken });
+  const joinQueue = () => {
+    console.log("joinQueue called");
+    const jwt = localStorage.getItem("authToken") || "";
+    
+    if (!jwt) {
+      console.error("No auth token found");
+      navigate("/login");
+      return;
+    }
+    
+    sendMessage({ type: "join_queue", jwt });
   };
 
   const makeMove = (column: number) => {
     if (gameState.gameId) {
-      const userToken = localStorage.getItem("userToken") || undefined;
-      sendMessage({ type: "move", column, userToken });
+      const jwt = localStorage.getItem("authToken") || "";
+      sendMessage({ type: "move", column, jwt });
     }
   };
 
-  const reconnect = (username?: string, gameID?: string) => {
-    const userToken = localStorage.getItem("userToken") || "";
+  const reconnect = (gameID?: string) => {
+    const jwt = localStorage.getItem("authToken") || "";
     
-    if (!userToken) {
-      console.error("Reconnect failed: userToken not found in localStorage");
+    if (!jwt) {
+      console.error("Reconnect failed: No auth token found");
       setGameState((prevState: GameState) => ({
         ...prevState,
         matchEnded: true,
         matchEndedAt: Date.now(),
         gameOver: true,
         inQueue: false,
-        reason: "No authentication token found. Please start a new game from the home page.",
+        reason: "Please log in to reconnect.",
       }));
+      navigate("/login");
       return;
     }
 
-    if (!username && !gameID) {
-      console.error("Reconnect failed: either username or gameID is required");
+    if (!gameID) {
+      console.error("Reconnect failed: gameID is required");
       setGameState((prevState: GameState) => ({
         ...prevState,
         matchEnded: true,
         matchEndedAt: Date.now(),
         gameOver: true,
         inQueue: false,
-        reason: "Invalid reconnection attempt. Either username or game ID is required.",
+        reason: "Game ID is required for reconnection.",
       }));
       return;
     }
 
-    console.log("Reconnecting with:", { 
-      username: username || "(not provided)", 
-      gameID: gameID || "(not provided)", 
-      hasToken: true 
-    });
+    console.log("Reconnecting to game:", gameID);
     
     sendMessage({
       type: "reconnect",
-      username: username || "",
-      gameID: gameID || "",
-      userToken: userToken,
+      gameID: gameID,
+      jwt: jwt,
     });
   };
 

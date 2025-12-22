@@ -1,83 +1,110 @@
 package websocket
 
 import (
-	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 )
 
-// Connection holds a WebSocket connection with its username
-type Connection struct {
-	Username   string
-	Conn       *websocket.Conn
-	WriteMutex *sync.Mutex
-}
-
-// ConnectionManager manages websocket connections by userToken
+// ConnectionManager manages WebSocket connections by user ID
 type ConnectionManager struct {
-	connections map[string]*Connection  // userToken → Connection
+	connections map[int64]*websocket.Conn
 	mu          sync.RWMutex
 }
 
+// NewConnectionManager creates a new connection manager
 func NewConnectionManager() *ConnectionManager {
 	return &ConnectionManager{
-		connections: make(map[string]*Connection),
-		mu:          sync.RWMutex{},
+		connections: make(map[int64]*websocket.Conn),
 	}
 }
 
-func (cm *ConnectionManager) AddConnection(userToken, username string, conn *websocket.Conn) error {
+// AddConnection adds or updates a connection for a user
+// If user already has a connection, it replaces it (for multi-device handling)
+func (cm *ConnectionManager) AddConnection(userID int64, conn *websocket.Conn) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	
-	if _, exists := cm.connections[userToken]; exists {
-		return fmt.Errorf("token already connected")
+
+	// Close old connection if exists
+	if oldConn, exists := cm.connections[userID]; exists {
+		log.Printf("[CONNECTION] Replacing existing connection for user %d", userID)
+		oldConn.Close()
 	}
-	
-	cm.connections[userToken] = &Connection{
-		Username:   username,
-		Conn:       conn,
-		WriteMutex: &sync.Mutex{},
-	}
-	return nil
+
+	cm.connections[userID] = conn
+	log.Printf("[CONNECTION] Added connection for user %d", userID)
 }
 
-func (cm *ConnectionManager) RemoveConnection(userToken string) {
+// GetConnection retrieves a connection by user ID
+func (cm *ConnectionManager) GetConnection(userID int64) (*websocket.Conn, bool) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	delete(cm.connections, userToken)
+
+	conn, exists := cm.connections[userID]
+	return conn, exists
 }
 
-func (cm *ConnectionManager) GetConnection(userToken string) (*websocket.Conn, bool) {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	connection, exists := cm.connections[userToken]
-	if !exists {
-		return nil, false
+// RemoveConnection removes a connection by user ID
+func (cm *ConnectionManager) RemoveConnection(userID int64) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if conn, exists := cm.connections[userID]; exists {
+		conn.Close()
+		delete(cm.connections, userID)
+		log.Printf("[CONNECTION] Removed connection for user %d", userID)
 	}
-	return connection.Conn, true
 }
 
-func (cm *ConnectionManager) SendMessage(userToken string, message models.ServerMessage) error {
+// SendMessage sends a message to a user by user ID
+func (cm *ConnectionManager) SendMessage(userID int64, message models.ServerMessage) error {
 	cm.mu.RLock()
-	connection, exists := cm.connections[userToken]
+	conn, exists := cm.connections[userID]
 	cm.mu.RUnlock()
-	
+
 	if !exists {
-		return fmt.Errorf("connection for token %s does not exist", userToken)
+		return fmt.Errorf("no connection found for user %d", userID)
 	}
 
-	data, err := json.Marshal(message)
+	err := conn.WriteJSON(message)
 	if err != nil {
+		log.Printf("[CONNECTION] Error sending message to user %d: %v", userID, err)
 		return err
 	}
 
-	// Use per-connection write mutex to prevent concurrent writes
-	connection.WriteMutex.Lock()
-	defer connection.WriteMutex.Unlock()
-	
-	return connection.Conn.WriteMessage(websocket.TextMessage, data)
+	return nil
+}
+
+// DisconnectUser forcefully disconnects a user and removes their connection
+func (cm *ConnectionManager) DisconnectUser(userID int64, reason string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if conn, exists := cm.connections[userID]; exists {
+		log.Printf("[CONNECTION] Disconnecting user %d, reason: %s", userID, reason)
+
+		// Send disconnect message before closing
+		conn.WriteJSON(models.ServerMessage{
+			Type:    "force_disconnect",
+			Message: reason,
+		})
+
+		conn.Close()
+		delete(cm.connections, userID)
+	}
+}
+
+// GetAllConnections returns all active user IDs with connections
+func (cm *ConnectionManager) GetAllConnections() []int64 {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	userIDs := make([]int64, 0, len(cm.connections))
+	for userID := range cm.connections {
+		userIDs = append(userIDs, userID)
+	}
+	return userIDs
 }

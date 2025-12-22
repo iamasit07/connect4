@@ -27,8 +27,6 @@ const ErrorNotification: React.FC<ErrorNotificationProps> = ({
       if (countdown === 0) {
         clearInterval(interval);
         localStorage.removeItem("gameID");
-        localStorage.removeItem("username");
-        localStorage.removeItem("isReconnecting");
         navigate("/");
         return;
       }
@@ -46,34 +44,18 @@ const ErrorNotification: React.FC<ErrorNotificationProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-8 max-w-md mx-4">
-        <div className="text-center">
-          <div className="mb-4">
-            <svg
-              className="mx-auto h-16 w-16 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">{title}</h2>
+      <div className="bg-white rounded-lg shadow-lg p-6 w-80">
+        <div className="text-center space-y-3">
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          
           {reason && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-              <p className="text-sm font-semibold text-red-800 mb-1">Reason:</p>
-              <p className="text-sm text-red-700">{reason}</p>
-            </div>
+            <p className="text-sm text-gray-600">{reason}</p>
           )}
-          <div className="bg-gray-100 rounded-lg p-4">
-            <p className="text-sm text-gray-700 mb-2">Redirecting in:</p>
-            <p className="text-4xl font-bold text-blue-600">
-              {countdown} second{countdown !== 1 ? "s" : ""}
+          
+          <div className="pt-2">
+            <p className="text-xs text-gray-500 mb-1">Redirecting in</p>
+            <p className="text-3xl font-bold text-blue-600">
+              {countdown}s
             </p>
           </div>
         </div>
