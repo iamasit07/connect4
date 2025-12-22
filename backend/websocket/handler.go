@@ -172,7 +172,7 @@ func HandleReconnect(message models.ClientMessage, userID int64, sessionManager 
 			})
 			return
 		}
-		
+
 		// Game exists but user is not a player
 		if sessionByID.Game.IsFinished() {
 			connManager.SendMessage(userID, models.ServerMessage{

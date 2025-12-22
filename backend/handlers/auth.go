@@ -23,9 +23,9 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token    string   `json:"token"`
-	UserID   int64    `json:"user_id"`
-	Username string   `json:"username"`
+	Token    string `json:"token"`
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
 }
 
 type ErrorResponse struct {
@@ -34,12 +34,6 @@ type ErrorResponse struct {
 
 // HandleSignup handles user registration
 func HandleSignup(w http.ResponseWriter, r *http.Request) {
-	// Handle CORS preflight
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -120,12 +114,6 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 
 // HandleLogin handles user login
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
-	// Handle CORS preflight
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
