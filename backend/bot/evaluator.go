@@ -13,12 +13,12 @@ func evaluateStrategicValue(board [][]models.PlayerID, row, column int, botPlaye
 		{-1, 1}, // diagonal with "/"
 		{1, 1},  // diagonal with "\"
 	}
-	
+
 	for _, dir := range directions {
 		deltaRow, deltaCol := dir[0], dir[1]
 		posCount := utils.CountDiskInDirection(board, row, column, deltaRow, deltaCol, botPlayer)
 		negCount := utils.CountDiskInDirection(board, row, column, -deltaRow, -deltaCol, botPlayer)
-		total := posCount + negCount + 1 
+		total := posCount + negCount + 1
 
 		if total >= 3 {
 			score += 100
@@ -48,7 +48,7 @@ func evaluateThreats(board [][]models.PlayerID, row, col int, player models.Play
 		total := posCount + negCount
 
 		// Check if there's space to extend (important!)
-		hasSpace := checkSpaceForExtension(board, row, col, dRow, dCol, posCount, negCount, player)
+		hasSpace := checkSpaceForExtension(board, row, col, dRow, dCol, posCount, negCount)
 
 		if !hasSpace {
 			continue // No point in counting if we can't extend

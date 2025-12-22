@@ -89,9 +89,9 @@ func main() {
 		Handler: middlewares.EnableCORS(mux),
 	}
 
-	log.Printf("Server is listening on port %s\\n", port)
+	log.Printf("Server is listening on port %s\n", port)
 
-	// Start server in goroutine
+	// Start server in a separate goroutine
 	go func() {
 		err = httpServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {

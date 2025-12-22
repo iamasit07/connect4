@@ -8,11 +8,11 @@ import (
 )
 
 type Config struct {
-	ReconnectTimeout         time.Duration
-	BotMatchmakingTimeout    time.Duration
-	BotUsername              string
-	BotToken                 string // Special token for bot games
-	AllowedOrigins           []string
+	ReconnectTimeout      time.Duration
+	BotMatchmakingTimeout time.Duration
+	BotUsername           string
+	BotToken              string // Special token for bot games
+	AllowedOrigins        []string
 }
 
 var AppConfig *Config
@@ -23,18 +23,18 @@ func LoadConfig() {
 	botUsername := GetEnv("BOT_USERNAME", "BOT")
 	botToken := GetEnv("BOT_TOKEN", "tkn_bot_default") // Default bot token
 	frontendURL := GetEnv("FRONTEND_URL", "https://4-in-a-row.iamasit07.me")
-	
+
 	// Build allowed origins list
 	allowedOrigins := []string{
 		frontendURL,
-		"http://localhost:5173",  // Local development
+		"http://localhost:5173", // Local development
 	}
 
 	AppConfig = &Config{
 		ReconnectTimeout:      time.Duration(reconnectTimeoutSec) * time.Second,
 		BotMatchmakingTimeout: time.Duration(botMatchmakingTimeoutSec) * time.Second,
 		BotUsername:           botUsername,
-		BotToken:              botToken,  // Assign bot token
+		BotToken:              botToken, // Assign bot token
 		AllowedOrigins:        allowedOrigins,
 	}
 

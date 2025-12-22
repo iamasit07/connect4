@@ -23,7 +23,6 @@ const (
 	SCORE_EDGE              = 5      // Edge columns
 )
 
-// Main bot function with improved scoring
 func CalculateBestMove(board [][]models.PlayerID, botPlayer models.PlayerID) int {
 	validColumns := utils.GetValidMoves(board)
 	if len(validColumns) == 0 {
@@ -33,7 +32,6 @@ func CalculateBestMove(board [][]models.PlayerID, botPlayer models.PlayerID) int
 	scores := make(map[int]int)
 	opponent := getOpponent(botPlayer)
 
-	// Initialize scores
 	for _, col := range validColumns {
 		scores[col] = 0
 	}
@@ -154,8 +152,7 @@ func evaluateWinningThreat(board [][]models.PlayerID, player models.PlayerID, op
 }
 
 // Check if there's room to extend a line (critical for real threats)
-// IMPORTANT: Accounts for gravity - empty spaces must be playable (bottom row or has piece below)
-func checkSpaceForExtension(board [][]models.PlayerID, row, col, dRow, dCol, posCount, negCount int, player models.PlayerID) bool {
+func checkSpaceForExtension(board [][]models.PlayerID, row, col, dRow, dCol, posCount, negCount int) bool {
 	// Check positive direction
 	posRow := row + dRow*(posCount+1)
 	posCol := col + dCol*(posCount+1)

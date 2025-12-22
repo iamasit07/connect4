@@ -87,7 +87,7 @@ func (gs *GameSession) cleanupConnections(conn ConnectionManagerInterface) {
 func (gs *GameSession) saveGameAsync(gameID string, p1ID int64, p1User string,
 	p2ID *int64, p2User string, winnerID *int64, winnerUser string,
 	reason string, moves, duration int, created, finished time.Time) {
-	
+
 	go func() {
 		err := db.SaveGame(gameID, p1ID, p1User, p2ID, p2User,
 			winnerID, winnerUser, reason, moves, duration, created, finished)
@@ -283,7 +283,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 			Board:  gs.Game.Board,
 		}
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
-		
+
 		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
 			nil, models.BotUsername, nil, "draw",
 			gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt)
@@ -331,13 +331,13 @@ func (gs *GameSession) HandleDisconnect(userID int64, conn ConnectionManagerInte
 	// Bot never disconnects, so only check for 2 disconnected in PvP games
 	if !gs.IsBot() && len(gs.DisconnectedPlayers) == 2 {
 		log.Printf("[DISCONNECT] Both players disconnected from game %s - declaring draw", gs.GameID)
-		
+
 		// Stop timer before finishing
 		if gs.ReconnectTimer != nil {
 			gs.ReconnectTimer.Stop()
 			gs.ReconnectTimer = nil
 		}
-		
+
 		gs.FinishedAt = time.Now()
 		gs.Reason = "both_disconnected"
 
