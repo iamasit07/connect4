@@ -74,8 +74,7 @@ func main() {
 	mux.HandleFunc("/api/auth/login", handlers.HandleLogin)
 
 	mux.HandleFunc("/api/leaderboard", func(w http.ResponseWriter, r *http.Request) {
-		// Get all leaderboard data (no limit)
-		leaderboard, err := db.GetLeaderboard(0) // 0 = no limit
+		leaderboard, err := db.GetLeaderboard()
 		if err != nil {
 			http.Error(w, "Failed to fetch leaderboard", http.StatusInternalServerError)
 			return

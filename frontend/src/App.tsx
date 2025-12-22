@@ -22,6 +22,14 @@ function App() {
           }
         />
         <Route
+          path="/game"
+          element={
+            <PrivateRoute>
+              <GamePage />
+            </PrivateRoute>
+          }
+        />
+        <Route
           path="/game/:gameID"
           element={
             <PrivateRoute>

@@ -253,20 +253,7 @@ const useWebSocket = (): UseWebSocketReturn => {
       return;
     }
 
-    if (!gameID) {
-      console.error("Reconnect failed: gameID is required");
-      setGameState((prevState: GameState) => ({
-        ...prevState,
-        matchEnded: true,
-        matchEndedAt: Date.now(),
-        gameOver: true,
-        inQueue: false,
-        reason: "Game ID is required for reconnection.",
-      }));
-      return;
-    }
-
-    console.log("Reconnecting to game:", gameID);
+    console.log("Reconnecting to game:", gameID || "(auto-find active game)");
     
     sendMessage({
       type: "reconnect",

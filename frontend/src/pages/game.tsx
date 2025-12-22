@@ -51,6 +51,19 @@ const GamePage: React.FC = () => {
       return;
     }
 
+    // ROUTE 3: /game (no param) → AUTO-RECONNECT (find user's active game)
+    if (!urlGameID) {
+      if (connected && !hasJoinedQueue.current) {
+        hasJoinedQueue.current = true;
+
+        setTimeout(() => {
+          console.log("Auto-reconnecting to active game");
+          reconnect(""); // Empty string = auto-find active game
+        }, 100);
+      }
+      return;
+    }
+
     // Invalid route, redirect to home
     console.warn("Invalid game route, redirecting to home");
     navigate("/");

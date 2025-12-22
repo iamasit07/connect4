@@ -149,43 +149,55 @@ func HandleMove(message models.ClientMessage, userID int64, sessionManager *serv
 
 // HandleReconnect handles a player reconnecting to their game
 func HandleReconnect(message models.ClientMessage, userID int64, sessionManager *server.SessionManager, connManager *ConnectionManager) {
-	log.Printf("[RECONNECT] User %d attempting to reconnect to game %s", userID, message.GameID)
+	log.Printf("[RECONNECT] User %d attempting to reconnect", userID)
 
+	var gameID string
+	var session *server.GameSession
+	var isPlayer bool
+
+	// If gameID not provided, try to find user's active game
 	if message.GameID == "" {
-		connManager.SendMessage(userID, models.ServerMessage{
-			Type:    "reconnect_failed",
-			Message: "Game ID is required for reconnection",
-		})
-		return
-	}
-
-	// Get session by game ID and verify user is a player
-	session, isPlayer := sessionManager.GetSessionByGameIDAndUserID(message.GameID, userID)
-	if !isPlayer {
-		// Check if game exists at all
-		sessionByID, exists := sessionManager.GetSessionByGameID(message.GameID)
-		if !exists {
-			// Game doesn't exist - likely finished and removed
+		log.Printf("[RECONNECT] No gameID provided, looking up user %d's active game", userID)
+		session, isPlayer = sessionManager.GetSessionByUserID(userID)
+		if !isPlayer {
 			connManager.SendMessage(userID, models.ServerMessage{
-				Type:    "game_finished",
-				Message: "This game has already ended",
+				Type:    "no_active_game",
+				Message: "No active game found. Please start a new game.",
 			})
 			return
 		}
-
-		// Game exists but user is not a player
-		if sessionByID.Game.IsFinished() {
-			connManager.SendMessage(userID, models.ServerMessage{
-				Type:    "game_finished",
-				Message: "This game has already ended",
-			})
-		} else {
-			connManager.SendMessage(userID, models.ServerMessage{
-				Type:    "not_in_game",
-				Message: "You are not a player in this game",
-			})
+		gameID = session.GameID
+		log.Printf("[RECONNECT] Found active game %s for user %d", gameID, userID)
+	} else {
+		// GameID provided, validate it
+		gameID = message.GameID
+		session, isPlayer = sessionManager.GetSessionByGameIDAndUserID(gameID, userID)
+		if !isPlayer {
+			// Check if game exists at all
+			sessionByID, exists := sessionManager.GetSessionByGameID(gameID)
+			if !exists {
+				// Game doesn't exist - likely finished and removed
+				connManager.SendMessage(userID, models.ServerMessage{
+					Type:    "game_finished",
+					Message: "This game has already ended",
+				})
+				return
+			}
+			
+			// Game exists but user is not a player
+			if sessionByID.Game.IsFinished() {
+				connManager.SendMessage(userID, models.ServerMessage{
+					Type:    "game_finished",
+					Message: "This game has already ended",
+				})
+			} else {
+				connManager.SendMessage(userID, models.ServerMessage{
+					Type:    "not_in_game",
+					Message: "You are not a player in this game",
+				})
+			}
+			return
 		}
-		return
 	}
 
 	// Check if game is finished
@@ -208,7 +220,7 @@ func HandleReconnect(message models.ClientMessage, userID int64, sessionManager 
 		return
 	}
 
-	log.Printf("[RECONNECT] User %d successfully reconnected to game %s", userID, message.GameID)
+	log.Printf("[RECONNECT] User %d successfully reconnected to game %s", userID, gameID)
 }
 
 // HandleDisconnect handles player disconnection

@@ -4,22 +4,22 @@ import { useAuth } from "../hooks/useAuth";
 
 const LandingPage = () => {
   const [reconnectGameID, setReconnectGameID] = useState("");
-  const navigate = useNavigate();  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const handleStartGame = () => {
-    // Clear any previous game state
     localStorage.removeItem("gameID");
     navigate("/game/queue");
   };
 
   const handleReconnect = () => {
-    if (reconnectGameID.trim() === "") {
-      alert("Please enter your Game ID to reconnect");
-      return;
+    // Navigate to game page with optional gameID
+    if (reconnectGameID.trim()) {
+      navigate(`/game/${reconnectGameID}`);
+    } else {
+      // Empty gameID → navigate to /game (no path) for auto-reconnect
+      navigate("/game");
     }
-
-    // Navigate to specific game
-    navigate(`/game/${reconnectGameID}`);
   };
 
   const handleLogout = () => {
@@ -32,16 +32,16 @@ const LandingPage = () => {
       <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">4 in a Row</h1>
-          <p className="text-sm text-gray-600">Connect four to win</p>
+          <p className="text-xl text-gray-600">Connect four to win</p>
           {user && (
-            <p className="text-sm text-blue-600 mt-2">
-              Playing as: <span className="font-semibold">{user.username}</span>
+            <p className="text-sm text-gray-500 mt-2">
+              Welcome back, {user.username}!
             </p>
           )}
         </div>
 
-        {/* New Game Section */}
-        <div className="border-2 border-gray-200 rounded-lg p-4">
+        {/* Start New Game Section */}
+        <div className="border-2 border-blue-200 rounded-lg p-4 bg-blue-50">
           <h2 className="text-lg font-semibold text-gray-800 mb-3">
             Start New Game
           </h2>
@@ -59,11 +59,11 @@ const LandingPage = () => {
             Reconnect to Game
           </h2>
           <p className="text-xs text-gray-600 mb-3">
-            Enter your Game ID to reconnect
+            Leave empty to auto-reconnect, or enter specific Game ID
           </p>
           <input
             type="text"
-            placeholder="Enter Game ID (from URL)"
+            placeholder="Game ID (optional)"
             value={reconnectGameID}
             onChange={(e) => setReconnectGameID(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleReconnect()}

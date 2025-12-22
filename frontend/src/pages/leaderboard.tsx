@@ -21,8 +21,8 @@ const LeaderboardPage = () => {
 
   const fetchLeaderboard = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_BACKEND_URL;
-      const response = await fetch(`${apiUrl}/api/leaderboard?limit=10`);
+      const apiUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:8080";
+      const response = await fetch(`${apiUrl}/api/leaderboard`);
       if (!response.ok) {
         throw new Error("Failed to fetch leaderboard");
       }
