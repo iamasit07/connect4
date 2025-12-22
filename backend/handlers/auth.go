@@ -34,6 +34,12 @@ type ErrorResponse struct {
 
 // HandleSignup handles user registration
 func HandleSignup(w http.ResponseWriter, r *http.Request) {
+	// Handle CORS preflight
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -114,6 +120,12 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 
 // HandleLogin handles user login
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
+	// Handle CORS preflight
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
