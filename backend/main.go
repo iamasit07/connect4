@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -75,13 +74,7 @@ func main() {
 	mux.HandleFunc("/api/auth/login", handlers.HandleLogin)
 
 	mux.HandleFunc("/api/leaderboard", func(w http.ResponseWriter, r *http.Request) {
-		limitSetter := r.URL.Query().Get("limit")
-		limit := 10
-		if limitSetter != "" {
-			fmt.Sscan(limitSetter, &limit)
-		}
-
-		leaderboard, err := db.GetLeaderboard(limit)
+		leaderboard, err := db.GetLeaderboard()
 		if err != nil {
 			http.Error(w, "Failed to fetch leaderboard", http.StatusInternalServerError)
 			return

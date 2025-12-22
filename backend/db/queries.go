@@ -157,7 +157,7 @@ func UpdatePlayerStatsTx(tx *sql.Tx, userID int64, won bool) error {
 	return nil
 }
 
-func GetLeaderboard(limit int) ([]PlayerStats, error) {
+func GetLeaderboard() ([]PlayerStats, error) {
 	query := `
 	SELECT username, games_played, games_won,
 		CASE 
@@ -165,11 +165,10 @@ func GetLeaderboard(limit int) ([]PlayerStats, error) {
 			ELSE 0
 		END AS win_rate
 	FROM players
-	ORDER BY win_rate DESC, games_played DESC, username ASC
-	LIMIT $1;
+	ORDER BY games_won DESC, username ASC;
 	`
 
-	rows, err := DB.Query(query, limit)
+	rows, err := DB.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query leaderboard: %v", err)
 	}
