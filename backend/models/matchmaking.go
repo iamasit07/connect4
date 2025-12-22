@@ -8,23 +8,22 @@ import (
 )
 
 type Match struct {
-	Player1Token    string
+	Player1ID       int64
 	Player1Username string
-	Player2Token    string
+	Player2ID       *int64 // nil for BOT
 	Player2Username string
-	GameID          string
 }
 
 type MatchmakingQueue struct {
-	WaitingPlayers map[string]string  // token → username
+	WaitingPlayers map[int64]string         // userID → username
 	Mux            *sync.Mutex
 	MatchChannel   chan Match
-	Timer          *map[string]*time.Timer
+	Timer          *map[int64]*time.Timer
 }
 
-func (m *MatchmakingQueue) NewMatchmakingQueue() *MatchmakingQueue {
-	timerMap := make(map[string]*time.Timer)
-	waitingPlayers := make(map[string]string)  // token → username
+func NewMatchmakingQueue() *MatchmakingQueue {
+	timerMap := make(map[int64]*time.Timer)
+	waitingPlayers := make(map[int64]string) // userID → username
 	queue := &MatchmakingQueue{
 		WaitingPlayers: waitingPlayers,
 		MatchChannel:   make(chan Match, 100),
@@ -34,37 +33,39 @@ func (m *MatchmakingQueue) NewMatchmakingQueue() *MatchmakingQueue {
 	return queue
 }
 
-func (m *MatchmakingQueue) AddPlayerToQueue(userToken, username string) error {
+func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string) error {
 	m.Mux.Lock()
 	defer m.Mux.Unlock()
 
-	if _, exists := m.WaitingPlayers[userToken]; exists {
+	if _, exists := m.WaitingPlayers[userID]; exists {
 		return nil
 	}
 
 	if len(m.WaitingPlayers) == 0 {
-		m.WaitingPlayers[userToken] = username
+		// First player in queue, start bot timer
+		m.WaitingPlayers[userID] = username
 		timer := time.AfterFunc(10*time.Second, func() {
-			m.HandleTimeout(userToken)
+			m.HandleTimeout(userID)
 		})
-		(*m.Timer)[userToken] = timer
+		(*m.Timer)[userID] = timer
 	} else {
-		var opponentToken, opponentUsername string
-		for token, name := range m.WaitingPlayers {
-			opponentToken = token
+		// Match with waiting player
+		var opponentID int64
+		var opponentUsername string
+		for uid, name := range m.WaitingPlayers {
+			opponentID = uid
 			opponentUsername = name
 			break
 		}
 
-		delete(m.WaitingPlayers, opponentToken)
-		m.stopAndDeleteTimer(opponentToken)
+		delete(m.WaitingPlayers, opponentID)
+		m.stopAndDeleteTimer(opponentID)
 
 		match := Match{
-			Player1Token:    opponentToken,
+			Player1ID:       opponentID,
 			Player1Username: opponentUsername,
-			Player2Token:    userToken,
+			Player2ID:       &userID,
 			Player2Username: username,
-			GameID:          GenerateGameID(),
 		}
 
 		m.MatchChannel <- match
@@ -72,24 +73,23 @@ func (m *MatchmakingQueue) AddPlayerToQueue(userToken, username string) error {
 	return nil
 }
 
-func (m *MatchmakingQueue) HandleTimeout(userToken string) {
+func (m *MatchmakingQueue) HandleTimeout(userID int64) {
 	m.Mux.Lock()
 	defer m.Mux.Unlock()
 
-	username, exists := m.WaitingPlayers[userToken]
+	username, exists := m.WaitingPlayers[userID]
 	if !exists {
 		return
 	}
 
-	delete(m.WaitingPlayers, userToken)
-	m.stopAndDeleteTimer(userToken)
+	delete(m.WaitingPlayers, userID)
+	m.stopAndDeleteTimer(userID)
 
 	match := Match{
-		Player1Token:    userToken,
+		Player1ID:       userID,
 		Player1Username: username,
-		Player2Token:    "", // Will be set to BOT_TOKEN by caller
+		Player2ID:       nil, // BOT
 		Player2Username: BotUsername,
-		GameID:          GenerateGameID(),
 	}
 
 	m.MatchChannel <- match
@@ -99,28 +99,25 @@ func (m *MatchmakingQueue) GetMatchChannel() chan Match {
 	return m.MatchChannel
 }
 
-func (m *MatchmakingQueue) RemovePlayer(userToken string) {
+func (m *MatchmakingQueue) RemovePlayer(userID int64) {
 	m.Mux.Lock()
 	defer m.Mux.Unlock()
 
-	delete(m.WaitingPlayers, userToken)
-	m.stopAndDeleteTimer(userToken)
+	delete(m.WaitingPlayers, userID)
+	m.stopAndDeleteTimer(userID)
 }
 
-func (m *MatchmakingQueue) stopAndDeleteTimer(userToken string) {
-	if timer := (*m.Timer)[userToken]; timer != nil {
+func (m *MatchmakingQueue) stopAndDeleteTimer(userID int64) {
+	if timer := (*m.Timer)[userID]; timer != nil {
 		timer.Stop()
 	}
-	delete(*m.Timer, userToken)
+	delete(*m.Timer, userID)
 }
 
 func GenerateGameID() string {
-	// Use crypto/rand for true randomness to prevent collisions
-	// This generates a 16-character hexadecimal string
 	b := make([]byte, 16)
 	_, err := rand.Read(b)
 	if err != nil {
-		// Fallback to timestamp if rand fails (very unlikely)
 		return fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 	return fmt.Sprintf("%x", b)

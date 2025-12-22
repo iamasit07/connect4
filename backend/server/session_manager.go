@@ -2,38 +2,52 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"sync"
 )
 
+// SessionManager manages all active game sessions
 type SessionManager struct {
-	Session    map[string]*GameSession  // gameID → GameSession
-	TokenToGame map[string]string        // userToken → gameID
+	Session    map[string]*GameSession // gameID → GameSession
+	UserToGame map[int64]string        // userID → gameID (for quick lookup)
 	Mux        *sync.Mutex
 }
 
-func (sm *SessionManager) CreateSession(player1Token, player1Username, player2Token, player2Username string, conn ConnectionManagerInterface) *GameSession {
+// NewSessionManager creates a new session manager
+func NewSessionManager() *SessionManager {
+	return &SessionManager{
+		Session:    make(map[string]*GameSession),
+		UserToGame: make(map[int64]string),
+		Mux:        &sync.Mutex{},
+	}
+}
+
+// CreateSession creates a new game session
+func (sm *SessionManager) CreateSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, conn ConnectionManagerInterface) *GameSession {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
 
-	// Create new game session with tokens
-	session := NewGameSession(player1Token, player1Username, player2Token, player2Username, conn)
+	// Create new game session with user IDs
+	session := NewGameSession(player1ID, player1Username, player2ID, player2Username, conn)
 	gameID := session.GameID
 	sm.Session[gameID] = session
-	sm.TokenToGame[player1Token] = gameID
-	if player2Username != "BOT" {
-		sm.TokenToGame[player2Token] = gameID
+	sm.UserToGame[player1ID] = gameID
+
+	if player2Username != "BOT" && player2ID != nil {
+		sm.UserToGame[*player2ID] = gameID
 	}
 
-	fmt.Printf("[SESSION] Created session %s: %s (%s) vs %s (%s)\n",
-		gameID, player1Username, player1Token, player2Username, player2Token)
+	log.Printf("[SESSION] Created session %s: %s (ID: %d) vs %s (ID: %v)\\n",
+		gameID, player1Username, player1ID, player2Username, player2ID)
 	return session
 }
 
-func (sm *SessionManager) GetSessionByToken(userToken string) (*GameSession, bool) {
+// GetSessionByUserID retrieves a session by user ID
+func (sm *SessionManager) GetSessionByUserID(userID int64) (*GameSession, bool) {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
 
-	gameID, exists := sm.TokenToGame[userToken]
+	gameID, exists := sm.UserToGame[userID]
 	if !exists {
 		return nil, false
 	}
@@ -42,6 +56,7 @@ func (sm *SessionManager) GetSessionByToken(userToken string) (*GameSession, boo
 	return session, exists
 }
 
+// GetSessionByGameID retrieves a session by game ID
 func (sm *SessionManager) GetSessionByGameID(gameID string) (*GameSession, bool) {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
@@ -50,79 +65,67 @@ func (sm *SessionManager) GetSessionByGameID(gameID string) (*GameSession, bool)
 	return session, exists
 }
 
-func (sm *SessionManager) NewSessionManager() *SessionManager {
-	session := &SessionManager{
-		Session:    make(map[string]*GameSession),
-		TokenToGame: make(map[string]string),
-		Mux:        &sync.Mutex{},
-	}
-	return session
-}
-
-func (sm *SessionManager) RemoveSession(gameID string, player1Token, player2Token string) error {
-	sm.Mux.Lock()
-	defer sm.Mux.Unlock()
-
-	fmt.Printf("[SESSION] Removing session %s\n", gameID)
-	delete(sm.Session, gameID)
-	delete(sm.TokenToGame, player1Token)
-	if player2Token != "" {
-		delete(sm.TokenToGame, player2Token)
-	}
-
-	return nil
-}
-
-// GetSessionByGameIDAndUsername finds a session where the username matches a player
-// Used for token corruption recovery
-func (sm *SessionManager) GetSessionByGameIDAndUsername(gameID, username string) (*GameSession, string, bool) {
+// GetSessionByGameIDAndUserID retrieves a session and verifies the user is a player
+func (sm *SessionManager) GetSessionByGameIDAndUserID(gameID string, userID int64) (*GameSession, bool) {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
 
 	session, exists := sm.Session[gameID]
 	if !exists {
-		return nil, "", false
+		return nil, false
 	}
 
-	// Check if username matches player1 or player2
-	if session.Player1Username == username {
-		return session, session.Player1Token, true
+	// Verify user is actually in this game
+	if session.Player1ID == userID {
+		return session, true
 	}
-	if session.Player2Username == username {
-		return session, session.Player2Token, true
+	if session.Player2ID != nil && *session.Player2ID == userID {
+		return session, true
 	}
 
-	return nil, "", false
+	return nil, false
 }
 
-// UpdatePlayerToken updates a player's token in the session and TokenToGame mapping
-// Used for token corruption recovery
-func (sm *SessionManager) UpdatePlayerToken(session *GameSession, oldToken, newToken, username string) error {
+// RemoveSession removes a session by game ID
+func (sm *SessionManager) RemoveSession(gameID string) error {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
 
-	session.mu.Lock()
-	defer session.mu.Unlock()
-
-	delete(sm.TokenToGame, oldToken)
-	sm.TokenToGame[newToken] = session.GameID
-
-	var targetToken *string
-	if session.Player1Username == username {
-		targetToken = &session.Player1Token
-	} else if session.Player2Username == username {
-		targetToken = &session.Player2Token
-	} else {
-		return fmt.Errorf("username not found in session")
+	session, exists := sm.Session[gameID]
+	if !exists {
+		return fmt.Errorf("session not found")
 	}
 
-	playerID := session.PlayerMapping[oldToken]
-	delete(session.PlayerMapping, oldToken)
-	session.PlayerMapping[newToken] = playerID
-	*targetToken = newToken
+	log.Printf("[SESSION] Removing session %s", gameID)
 
-	fmt.Printf("[SESSION] Updated token for %s in session %s\n", username, session.GameID)
+	// Remove from UserToGame mapping
+	delete(sm.UserToGame, session.Player1ID)
+	if session.Player2ID != nil {
+		delete(sm.UserToGame, *session.Player2ID)
+	}
+
+	// Remove session
+	delete(sm.Session, gameID)
+
 	return nil
 }
 
+// HasActiveGame checks if a user has an active game
+func (sm *SessionManager) HasActiveGame(userID int64) bool {
+	sm.Mux.Lock()
+	defer sm.Mux.Unlock()
 
+	gameID, exists := sm.UserToGame[userID]
+	if !exists {
+		return false
+	}
+
+	session, exists := sm.Session[gameID]
+	if !exists {
+		// Clean up orphaned mapping
+		delete(sm.UserToGame, userID)
+		return false
+	}
+
+	return !session.Game.IsFinished()
+}

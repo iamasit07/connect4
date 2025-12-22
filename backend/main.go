@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 
 	"github.com/iamasit07/4-in-a-row/backend/config"
 	"github.com/iamasit07/4-in-a-row/backend/db"
+	"github.com/iamasit07/4-in-a-row/backend/handlers"
 	"github.com/iamasit07/4-in-a-row/backend/middlewares"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/server"
@@ -34,7 +34,7 @@ func main() {
 
 	dbUri := config.GetEnv("DB_URI", "")
 	port := config.GetEnv("PORT", "8080")
-	
+
 	dbMaxOpenConns := config.GetEnvAsInt("DB_MAX_OPEN_CONNS", 25)
 	dbMaxIdleConns := config.GetEnvAsInt("DB_MAX_IDLE_CONNS", 25)
 	dbConnMaxLifetimeMin := config.GetEnvAsInt("DB_CONN_MAX_LIFETIME_MINUTES", 5)
@@ -46,44 +46,33 @@ func main() {
 	defer db.CloseDB()
 
 	connectionManager := websocket.NewConnectionManager()
+	matchMakingQueue := models.NewMatchmakingQueue()
+	sessionManager := server.NewSessionManager()
 
-	timerMap := make(map[string]*time.Timer)
-	waitingPlayersMap := make(map[string]string)  // token → username
-	matchMakingQueue := &models.MatchmakingQueue{
-		WaitingPlayers: waitingPlayersMap,
-		MatchChannel:   make(chan models.Match, 100),
-		Mux:            &sync.Mutex{},
-		Timer:          &timerMap,
-	}
-
-	sessionManager := &server.SessionManager{
-		Session:     make(map[string]*server.GameSession),
-		TokenToGame: make(map[string]string),
-		Mux:         &sync.Mutex{},
-	}
-
-	tokenManager := websocket.NewTokenManager()
-
-	go MatchMakingListener(matchMakingQueue, connectionManager, sessionManager, tokenManager)
+	go MatchMakingListener(matchMakingQueue, connectionManager, sessionManager)
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.CreateUpgrader()
-		
+
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Println("Error during connection upgrade:", err)
 			return
 		}
 
-		websocket.HandleConnection(conn, connectionManager, matchMakingQueue, sessionManager, tokenManager)
+		websocket.HandleConnection(conn, connectionManager, matchMakingQueue, sessionManager)
 	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+
+	// Auth routes
+	mux.HandleFunc("/api/auth/signup", handlers.HandleSignup)
+	mux.HandleFunc("/api/auth/login", handlers.HandleLogin)
 
 	mux.HandleFunc("/api/leaderboard", func(w http.ResponseWriter, r *http.Request) {
 		limitSetter := r.URL.Query().Get("limit")
@@ -107,7 +96,7 @@ func main() {
 		Handler: middlewares.EnableCORS(mux),
 	}
 
-	log.Printf("Server is listening on port %s\n", port)
+	log.Printf("Server is listening on port %s\\n", port)
 
 	// Start server in goroutine
 	go func() {
@@ -136,51 +125,57 @@ func main() {
 	log.Println("Server exited gracefully")
 }
 
-func MatchMakingListener(queue *models.MatchmakingQueue, cm *websocket.ConnectionManager, sm *server.SessionManager, tm *websocket.TokenManager) {
+func MatchMakingListener(queue *models.MatchmakingQueue, cm *websocket.ConnectionManager, sm *server.SessionManager) {
 	for {
 		match := <-queue.MatchChannel
 
-		player1Token := match.Player1Token
+		player1ID := match.Player1ID
 		player1Username := match.Player1Username
-		player2Token := match.Player2Token
+		player2ID := match.Player2ID
 		player2Username := match.Player2Username
 
-		// If player2 is bot, use BOT_TOKEN from config
-		if player2Username == models.BotUsername {
-			player2Token = config.AppConfig.BotToken
+		log.Printf("[MATCHMAKING] Match found: %s (ID: %d) vs %s (ID: %v)",
+			player1Username, player1ID, player2Username, player2ID)
+
+		// Check if player1 has any active sessions
+		if sm.HasActiveGame(player1ID) {
+			player1Session, _ := sm.GetSessionByUserID(player1ID)
+			if player1Session != nil && !player1Session.Game.IsFinished() {
+				log.Printf("[MATCHMAKING] Player1 %s has active game %s - terminating it before new match",
+					player1Username, player1Session.GameID)
+
+				// Terminate the session
+				err := player1Session.TerminateSessionByAbandonment(player1ID, cm)
+				if err != nil {
+					log.Printf("[MATCHMAKING] Failed to terminate player1's session: %v", err)
+				}
+
+				sm.RemoveSession(player1Session.GameID)
+			}
 		}
 
-		// Check if player2 (the matched opponent) has any active sessions
-		// Note: player1's active sessions are already handled in HandleJoinQueue
-		if player2Username != models.BotUsername {
-			player2Session, exists := sm.GetSessionByToken(player2Token)
-			if exists && !player2Session.Game.IsFinished() {
-				log.Printf("[MATCHMAKING] Player2 %s has active game %s - terminating it before new match",
-					player2Username, player2Session.GameID)
-				
-				// CRITICAL: Remove player2's connection before terminating
-				player2OpponentToken := player2Session.GetOpponentToken(player2Token)
-				cm.RemoveConnection(player2Token)
-				
-				// Terminate the session - opponent wins (only opponent gets game_over)
-				err := player2Session.TerminateSessionByAbandonment(player2Token, player2OpponentToken, cm)
-				if err != nil {
-					log.Printf("[MATCHMAKING] Failed to terminate player2's session: %v", err)
+		// Check if player2 has any active sessions (if not bot)
+		if player2Username != models.BotUsername && player2ID != nil {
+			if sm.HasActiveGame(*player2ID) {
+				player2Session, _ := sm.GetSessionByUserID(*player2ID)
+				if player2Session != nil && !player2Session.Game.IsFinished() {
+					log.Printf("[MATCHMAKING] Player2 %s has active game %s - terminating it before new match",
+						player2Username, player2Session.GameID)
+
+					err := player2Session.TerminateSessionByAbandonment(*player2ID, cm)
+					if err != nil {
+						log.Printf("[MATCHMAKING] Failed to terminate player2's session: %v", err)
+					}
+
+					sm.RemoveSession(player2Session.GameID)
 				}
-				
-				// Remove from session manager
-				sm.RemoveSession(
-					player2Session.GameID,
-					player2Session.Player1Token,
-					player2Session.Player2Token,
-				)
 			}
 		}
 
 		// CreateSession will handle sending game_start messages
-		session := sm.CreateSession(player1Token, player1Username, player2Token, player2Username, cm)
+		session := sm.CreateSession(player1ID, player1Username, player2ID, player2Username, cm)
 
-		log.Printf("Match started between %s (%s) and %s (%s) with game ID %s\n",
-			player1Username, player1Token, player2Username, player2Token, session.GameID)
+		log.Printf("Match started between %s (ID: %d) and %s (ID: %v) with game ID %s\\n",
+			player1Username, player1ID, player2Username, player2ID, session.GameID)
 	}
 }
