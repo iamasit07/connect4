@@ -255,22 +255,6 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 
 		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
-		// Save game (bot wins, no player2ID)
-		err := db.SaveGame(
-			gs.GameID,
-			gs.Player1ID, gs.Player1Username,
-			nil, models.BotUsername,
-			nil, models.BotUsername,
-			gs.Reason,
-			gs.Game.MoveCount,
-			duration,
-			gs.CreatedAt,
-			gs.FinishedAt,
-		)
-		if err != nil {
-			log.Printf("[GAME] Error saving game: %v", err)
-		}
-
 		gameOverMsg := models.ServerMessage{
 			Type:   "game_over",
 			Winner: models.BotUsername,
@@ -279,6 +263,11 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 		}
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
 		// Don't close connection - let player see game over screen
+
+		// Save game asynchronously (bot wins)
+		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
+			nil, models.BotUsername, nil, models.BotUsername,
+			gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt)
 		return nil
 	}
 
@@ -289,21 +278,6 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 
 		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
-		err := db.SaveGame(
-			gs.GameID,
-			gs.Player1ID, gs.Player1Username,
-			nil, models.BotUsername,
-			nil, "draw",
-			gs.Reason,
-			gs.Game.MoveCount,
-			duration,
-			gs.CreatedAt,
-			gs.FinishedAt,
-		)
-		if err != nil {
-			log.Printf("[GAME] Error saving game: %v", err)
-		}
-
 		gameOverMsg := models.ServerMessage{
 			Type:   "game_over",
 			Winner: "draw",
@@ -311,6 +285,12 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 			Board:  gs.Game.Board,
 		}
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
+		// Don't close connection - let player see game over screen
+
+		// Save game asynchronously (draw)
+		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
+			nil, models.BotUsername, nil, "draw",
+			gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt)
 		return nil
 	}
 
