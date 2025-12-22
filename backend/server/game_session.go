@@ -81,6 +81,24 @@ func (gs *GameSession) cleanupConnections(conn ConnectionManagerInterface) {
 	}
 }
 
+// saveGameAsync saves game data to database asynchronously
+// This prevents blocking when sending game_over messages to players
+// All parameters are passed by value to avoid race conditions
+func (gs *GameSession) saveGameAsync(gameID string, p1ID int64, p1User string,
+	p2ID *int64, p2User string, winnerID *int64, winnerUser string,
+	reason string, moves, duration int, created, finished time.Time) {
+	
+	go func() {
+		err := db.SaveGame(gameID, p1ID, p1User, p2ID, p2User,
+			winnerID, winnerUser, reason, moves, duration, created, finished)
+		if err != nil {
+			log.Printf("[GAME] Error saving game %s: %v", gameID, err)
+		} else {
+			log.Printf("[GAME] Game %s saved successfully", gameID)
+		}
+	}()
+}
+
 // NewGameSession creates a  new game session
 func NewGameSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, conn ConnectionManagerInterface) *GameSession {
 	gameID := utils.GenerateGameID()
@@ -154,23 +172,6 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 
 		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
-		// Save game
-		err := db.SaveGame(
-			gs.GameID,
-			gs.Player1ID, gs.Player1Username,
-			gs.Player2ID, gs.Player2Username,
-			&winnerID, winnerUsername,
-			gs.Reason,
-			gs.Game.MoveCount,
-			duration,
-			gs.CreatedAt,
-			gs.FinishedAt,
-		)
-		if err != nil {
-			log.Printf("[GAME] Error saving game: %v", err)
-		}
-
-		// Send game_over to both players
 		gameOverMsg := models.ServerMessage{
 			Type:   "game_over",
 			Winner: winnerUsername,
@@ -183,6 +184,10 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 			conn.SendMessage(*gs.Player2ID, gameOverMsg)
 		}
 
+		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
+			gs.Player2ID, gs.Player2Username, &winnerID, winnerUsername,
+			gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt)
+
 		return nil
 	}
 
@@ -193,23 +198,6 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 
 		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
-		// Save game
-		err := db.SaveGame(
-			gs.GameID,
-			gs.Player1ID, gs.Player1Username,
-			gs.Player2ID, gs.Player2Username,
-			nil, "draw",
-			gs.Reason,
-			gs.Game.MoveCount,
-			duration,
-			gs.CreatedAt,
-			gs.FinishedAt,
-		)
-		if err != nil {
-			log.Printf("[GAME] Error saving game: %v", err)
-		}
-
-		// Send game_over to both players
 		gameOverMsg := models.ServerMessage{
 			Type:   "game_over",
 			Winner: "draw",
@@ -221,6 +209,11 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 		if !gs.IsBot() && gs.Player2ID != nil {
 			conn.SendMessage(*gs.Player2ID, gameOverMsg)
 		}
+
+		// Save game asynchronously (non-blocking)
+		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
+			gs.Player2ID, gs.Player2Username, nil, "draw",
+			gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt)
 
 		return nil
 	}
@@ -508,7 +501,6 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 	log.Printf("[TERMINATE] Game %s terminated by abandonment from %s (ID: %d)",
 		gs.GameID, abandoningUsername, abandoningUserID)
 
-	// Stop reconnect timer if it exists
 	if gs.ReconnectTimer != nil {
 		gs.ReconnectTimer.Stop()
 		gs.ReconnectTimer = nil
@@ -520,7 +512,6 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 
 	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
-	// Save game - opponent wins
 	err := db.SaveGame(
 		gs.GameID,
 		gs.Player1ID, gs.Player1Username,
@@ -536,7 +527,6 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 		log.Printf("[GAME] Error saving game: %v", err)
 	}
 
-	// Send game_over ONLY to opponent (abandoning player already joining new game)
 	gameOverMsg := models.ServerMessage{
 		Type:   "game_over",
 		Winner: opponentUsername,
