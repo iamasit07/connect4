@@ -1,8 +1,6 @@
 package bot
 
 import (
-	"math"
-
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/utils"
 )
@@ -31,25 +29,40 @@ func evaluateStrategicValue(board [][]models.PlayerID, row, column int, botPlaye
 	return score
 }
 
-func findBestColumn(scores map[int]int) int {
-	maxScore := -999
-	bestColumn := 3
+// Evaluate threats (3-in-a-row, 2-in-a-row) for a given position
+func evaluateThreats(board [][]models.PlayerID, row, col int, player models.PlayerID) int {
+	score := 0
+	directions := [][2]int{
+		{0, 1},  // horizontal
+		{1, 0},  // vertical
+		{1, 1},  // diagonal \
+		{1, -1}, // diagonal /
+	}
 
-	for col := 0; col < models.Columns; col++ {
-		score, exists := scores[col]
-		if !exists {
-			continue
+	for _, dir := range directions {
+		dRow, dCol := dir[0], dir[1]
+
+		// Count in both directions
+		posCount := utils.CountDiskInDirection(board, row, col, dRow, dCol, player)
+		negCount := utils.CountDiskInDirection(board, row, col, -dRow, -dCol, player)
+		total := posCount + negCount
+
+		// Check if there's space to extend (important!)
+		hasSpace := checkSpaceForExtension(board, row, col, dRow, dCol, posCount, negCount, player)
+
+		if !hasSpace {
+			continue // No point in counting if we can't extend
 		}
 
-		if score > maxScore {
-			maxScore = score
-			bestColumn = col
-		} else if score == maxScore {
-			if math.Abs(float64(col - 3)) < math.Abs(float64(bestColumn - 3)) {
-				bestColumn = col
-			}
+		// Score based on how many connected pieces
+		if total >= 3 {
+			score += SCORE_THREE_IN_ROW
+		} else if total == 2 {
+			score += SCORE_TWO_IN_ROW
+		} else if total == 1 {
+			score += 25 // Single connection
 		}
 	}
 
-	return bestColumn
+	return score
 }
