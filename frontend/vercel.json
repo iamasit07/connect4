@@ -1,18 +1,33 @@
 {
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://four-in-a-row-backend-tnan.onrender.com/api/:path*"
-    },
-    {
-      "source": "/ws",
-      "destination": "https://four-in-a-row-backend-tnan.onrender.com/ws"
+      "source": "/api/(.*)",
+      "destination": "https://four-in-a-row-backend-tnan.onrender.com/api/$1"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
       "dest": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "https://4-in-a-row.iamasit07.me"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        }
+      ]
     }
   ]
 }
