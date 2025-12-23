@@ -72,7 +72,6 @@ export function useAuth(): UseAuthReturn {
     if (token) {
       // Check if token is expired
       if (isTokenExpired(token)) {
-        console.log("Token expired on mount, clearing...");
         localStorage.removeItem("authToken");
         setUser(null);
         return;
@@ -93,7 +92,6 @@ export function useAuth(): UseAuthReturn {
     const checkTokenExpiration = () => {
       const token = localStorage.getItem("authToken");
       if (token && isTokenExpired(token)) {
-        console.log("Token expired, clearing...");
         localStorage.removeItem("authToken");
         setUser(null);
       }
