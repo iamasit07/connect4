@@ -8,9 +8,9 @@
 
 ## 📹 Video Walkthrough
 
-> **[Video Explanation Link]()**
+> **[Video Explanation Link](https://www.tella.tv/video/four-in-a-row-brief-explanation-video-077f)**
 >
-> A detailed walkthrough covering architecture decisions, bot AI implementation, concurrency handling, and key technical challenges solved.
+> A brief walkthrough covering architecture decisions, bot AI implementation, concurrency handling, and key technical challenges solved.
 
 ---
 
