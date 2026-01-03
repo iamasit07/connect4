@@ -1,6 +1,6 @@
-# 4-in-a-Row — Backend Engineering Intern Assignment
+# 4-in-a-Row — Backend Project
 
-> **Submission by Asit Upadhyay** 
+> **Created by Asit Upadhyay** 
 
 🎮 **[Live Demo](https://4-in-a-row.iamasit07.me)** | 🚀 **[Backend API](https://four-in-a-row-y7w6.onrender.com)**
 
@@ -10,9 +10,9 @@
 
 This project implements a real-time multiplayer **4-in-a-Row (Connect Four)** game server in **Go** with WebSocket support, featuring intelligent bot matchmaking, persistent game storage, and a React/TypeScript frontend. The implementation goes beyond basic requirements by adding JWT authentication, sophisticated AI strategy, and production-ready concurrency patterns.
 
-## ✅ Assignment Requirements Met
+## ✅ Features
 
-| Requirement                                | Status              | Implementation                                        |
+| Features                                   | Status              | Implementation                                        |
 | ------------------------------------------ | ------------------- | ----------------------------------------------------- |
 | ✅ Real-time multiplayer (WebSocket)       | **Completed**       | Gorilla WebSocket with concurrent connection handling |
 | ✅ Player matchmaking                      | **Completed**       | Queue-based system with 10-second timeout             |
