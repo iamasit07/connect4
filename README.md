@@ -6,14 +6,6 @@
 
 ---
 
-## 📹 Video Walkthrough
-
-> **[Video Explanation Link](https://www.tella.tv/video/four-in-a-row-brief-explanation-video-077f)**
->
-> A brief walkthrough covering architecture decisions, bot AI implementation, concurrency handling, and key technical challenges solved.
-
----
-
 ## 📋 Assignment Overview
 
 This project implements a real-time multiplayer **4-in-a-Row (Connect Four)** game server in **Go** with WebSocket support, featuring intelligent bot matchmaking, persistent game storage, and a React/TypeScript frontend. The implementation goes beyond basic requirements by adding JWT authentication, sophisticated AI strategy, and production-ready concurrency patterns.
