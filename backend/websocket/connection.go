@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/iamasit07/4-in-a-row/backend/models"
@@ -83,7 +84,12 @@ func (cm *ConnectionManager) DisconnectUser(userID int64, reason string) {
 			Message: reason,
 		})
 
-		conn.Close()
+		// Small delay to ensure message is sent before closing
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			conn.Close()
+		}()
+
 		delete(cm.connections, userID)
 	}
 }

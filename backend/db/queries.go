@@ -125,15 +125,22 @@ func SaveGame(gameID string, player1ID int64, player1Username string, player2ID 
 		}
 	}
 
-	// Insert game record
+	// Insert or update game record (UPSERT to handle race conditions)
 	query := `
 	INSERT INTO game (game_id, player1_id, player1_username, player2_id, player2_username, winner_id, winner_username, reason, total_moves, duration_seconds, created_at, finished_at)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	ON CONFLICT (game_id) DO UPDATE SET
+		winner_id = EXCLUDED.winner_id,
+		winner_username = EXCLUDED.winner_username,
+		reason = EXCLUDED.reason,
+		total_moves = EXCLUDED.total_moves,
+		duration_seconds = EXCLUDED.duration_seconds,
+		finished_at = EXCLUDED.finished_at;
 	`
 
 	_, err = tx.Exec(query, gameID, player1ID, player1Username, player2ID, player2Username, winnerID, winnerUsername, reason, totalMoves, durationSeconds, createdAt, finishedAt)
 	if err != nil {
-		return fmt.Errorf("failed to insert game record: %v", err)
+		return fmt.Errorf("failed to upsert game record: %v", err)
 	}
 
 	if err := tx.Commit(); err != nil {

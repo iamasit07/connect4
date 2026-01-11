@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
+import { useAuth } from "../contexts/AuthContext";
 
 const LoginPage = () => {
   const [username, setUsername] = useState("");
@@ -8,12 +8,12 @@ const LoginPage = () => {
   const { login, loading, error, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (check once on mount)
   useEffect(() => {
     if (isAuthenticated()) {
       navigate("/", { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +25,9 @@ const LoginPage = () => {
 
     const success = await login(username, password);
     if (success) {
-      navigate("/");
+      setTimeout(() => {
+        navigate("/");
+      }, 100);
     }
   };
 

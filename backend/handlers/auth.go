@@ -104,7 +104,10 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[AUTH] User registered successfully: %s (ID: %d)", req.Username, userID)
 
-	// Send response
+	// Set JWT in HTTP-only cookie
+	utils.SetAuthCookie(w, token)
+
+	// Send response (token included for hybrid approach - frontend can read from response)
 	writeJSON(w, AuthResponse{
 		Token:    token,
 		UserID:   userID,
@@ -113,7 +116,13 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleLogin handles user login
-func HandleLogin(w http.ResponseWriter, r *http.Request) {
+func MakeHandleLogin(connManager interface{}) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		HandleLoginWithConnManager(w, r, connManager)
+	}
+}
+
+func HandleLoginWithConnManager(w http.ResponseWriter, r *http.Request, connManager interface{}) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -125,47 +134,92 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate input
-	req.Username = strings.TrimSpace(req.Username)
-	if req.Username == "" || req.Password == "" {
+	log.Printf("[AUTH] Login attempt for username: %s", req.Username)
+
+	if strings.TrimSpace(req.Username) == "" || strings.TrimSpace(req.Password) == "" {
 		writeJSONError(w, "Username and password are required", http.StatusBadRequest)
 		return
 	}
 
-	// Get user from database
 	user, err := db.GetUserByUsername(req.Username)
 	if err != nil {
-		log.Printf("[AUTH] Error getting user: %v", err)
-		writeJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	if user == nil {
 		writeJSONError(w, "Invalid username or password", http.StatusUnauthorized)
 		return
 	}
 
-	// Compare password
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
-	if err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		writeJSONError(w, "Invalid username or password", http.StatusUnauthorized)
 		return
 	}
 
-	// Generate JWT
 	token, err := utils.GenerateJWT(user.ID, user.Username)
 	if err != nil {
-		log.Printf("[AUTH] Error generating JWT: %v", err)
+		log.Printf("[AUTH] Login failed for user %s: JWT generation error - %v", req.Username, err)
 		writeJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	log.Printf("[AUTH] User logged in successfully: %s (ID: %d)", user.Username, user.ID)
 
-	// Send response
+	// Disconnect any existing WebSocket connections for this user
+	if cm, ok := connManager.(interface{ DisconnectUser(int64, string) }); ok {
+		cm.DisconnectUser(user.ID, "Logged in from another device")
+		log.Printf("[AUTH] Disconnected existing session for user %d during login", user.ID)
+	}
+
+	// Set JWT in HTTP-only cookie
+	utils.SetAuthCookie(w, token)
+
+	// Send response (token included for hybrid approach - frontend can read from response)
 	writeJSON(w, AuthResponse{
 		Token:    token,
 		UserID:   user.ID,
 		Username: user.Username,
+	}, http.StatusOK)
+}
+
+// HandleLogout handles user logout by clearing the auth cookie
+func HandleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Clear the auth cookie
+	utils.ClearAuthCookie(w)
+
+	log.Printf("[AUTH] User logged out successfully")
+
+	// Send success response
+	writeJSON(w, map[string]string{"message": "Logged out successfully"}, http.StatusOK)
+}
+
+// HandleMe returns current user info based on the auth cookie
+func HandleMe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get token from cookie
+	token, err := utils.GetTokenFromCookie(r)
+	if err != nil {
+		writeJSONError(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate JWT
+	claims, err := utils.ValidateJWT(token)
+	if err != nil {
+		writeJSONError(w, "Invalid or expired token", http.StatusUnauthorized)
+		return
+	}
+
+	// Return user info and token (for WebSocket use)
+	writeJSON(w, AuthResponse{
+		Token:    token,
+		UserID:   claims.UserID,
+		Username: claims.Username,
 	}, http.StatusOK)
 }
 

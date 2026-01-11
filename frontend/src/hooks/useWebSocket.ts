@@ -6,6 +6,7 @@ import {
   ServerMessage,
 } from "../types/game";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 interface UseWebSocketReturn {
   connected: boolean;
@@ -39,6 +40,7 @@ const useWebSocket = (): UseWebSocketReturn => {
 
   const ws = useRef<WebSocket | null>(null);
   const navigate = useNavigate();
+  const { getToken, logout } = useAuth();
 
   useEffect(() => {
     const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
@@ -125,18 +127,15 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "force_disconnect":
-          localStorage.removeItem("authToken");
+          // Clear gameID from localStorage
           localStorage.removeItem("gameID");
           
+          // Logout to clear the HttpOnly cookie (don't await, fire and forget)
+          logout();
+          
+          // Navigate and show alert
           navigate("/login");
           alert(message.message || "You have been logged out");
-          break;
-        case "not_authenticated":
-        case "invalid_token":
-        case "token_mismatch":
-          console.error("Authentication error:", message.message);
-          localStorage.removeItem("authToken");
-          navigate("/login");
           break;
         case "error":
         case "queue_error":
@@ -181,6 +180,7 @@ const useWebSocket = (): UseWebSocketReturn => {
     };
 
     ws.current.onclose = () => {
+      console.log("WebSocket closed");
       setConnected(false);
     };
 
@@ -203,7 +203,7 @@ const useWebSocket = (): UseWebSocketReturn => {
   };
 
   const joinQueue = () => {
-    const jwt = localStorage.getItem("authToken") || "";
+    const jwt = getToken() || "";
     
     if (!jwt) {
       console.error("No auth token found");
@@ -216,13 +216,13 @@ const useWebSocket = (): UseWebSocketReturn => {
 
   const makeMove = (column: number) => {
     if (gameState.gameId) {
-      const jwt = localStorage.getItem("authToken") || "";
+      const jwt = getToken() || "";
       sendMessage({ type: "move", column, jwt });
     }
   };
 
   const reconnect = (gameID?: string) => {
-    const jwt = localStorage.getItem("authToken") || "";
+    const jwt = getToken() || "";
     
     if (!jwt) {
       setGameState((prevState: GameState) => ({
