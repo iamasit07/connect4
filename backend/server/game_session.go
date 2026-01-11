@@ -32,6 +32,7 @@ type GameSession struct {
 	ReconnectTimer      *time.Timer
 	CreatedAt           time.Time
 	FinishedAt          time.Time
+	BotDifficulty       string // "easy", "medium", "hard"
 	mu                  sync.Mutex
 }
 
@@ -95,7 +96,7 @@ func (gs *GameSession) saveGameAsync(gameID string, p1ID int64, p1User string,
 	}()
 }
 
-func NewGameSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, conn ConnectionManagerInterface) *GameSession {
+func NewGameSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, botDifficulty string, conn ConnectionManagerInterface) *GameSession {
 	gameID := utils.GenerateGameID()
 	newGame := (&game.Game{}).NewGame()
 
@@ -113,6 +114,7 @@ func NewGameSession(player1ID int64, player1Username string, player2ID *int64, p
 		Player2Username: player2Username,
 		Game:            newGame,
 		PlayerMapping:   mapping,
+		BotDifficulty:   botDifficulty,
 		CreatedAt:       time.Now(),
 		mu:              sync.Mutex{},
 	}
@@ -230,7 +232,11 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 }
 
 func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
-	botColumn := bot.CalculateBestMove(gs.Game.Board, models.Player2)
+	difficulty := gs.BotDifficulty
+	if difficulty == "" {
+		difficulty = "medium" // Default to medium if not set
+	}
+	botColumn := bot.CalculateBestMove(gs.Game.Board, models.Player2, difficulty)
 	botRow, err := gs.Game.MakeMove(models.Player2, botColumn)
 	if err != nil {
 		return err

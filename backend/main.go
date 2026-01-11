@@ -168,9 +168,9 @@ func MatchMakingListener(queue *models.MatchmakingQueue, cm *websocket.Connectio
 		}
 
 		// CreateSession will handle sending game_start messages
-		session := sm.CreateSession(player1ID, player1Username, player2ID, player2Username, cm)
+		session := sm.CreateSession(player1ID, player1Username, player2ID, player2Username, match.BotDifficulty, cm)
 
-		log.Printf("Match started between %s (ID: %d) and %s (ID: %v) with game ID %s\\n",
+		log.Printf("Match started between %s (ID: %d) and %s (ID: %v) with game ID %s\n",
 			player1Username, player1ID, player2Username, player2ID, session.GameID)
 	}
 }

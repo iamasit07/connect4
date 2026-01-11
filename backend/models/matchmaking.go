@@ -10,10 +10,12 @@ type Match struct {
 	Player1Username string
 	Player2ID       *int64 // nil for BOT
 	Player2Username string
+	BotDifficulty   string // "easy", "medium", "hard" - only used for bot games
 }
 
 type MatchmakingQueue struct {
 	WaitingPlayers map[int64]string         // userID → username
+	Difficulties   map[int64]string         // userID → bot difficulty
 	Mux            *sync.Mutex
 	MatchChannel   chan Match
 	Timer          *map[int64]*time.Timer
@@ -22,8 +24,10 @@ type MatchmakingQueue struct {
 func NewMatchmakingQueue() *MatchmakingQueue {
 	timerMap := make(map[int64]*time.Timer)
 	waitingPlayers := make(map[int64]string) // userID → username
+	difficulties := make(map[int64]string)   // userID → difficulty
 	queue := &MatchmakingQueue{
 		WaitingPlayers: waitingPlayers,
+		Difficulties:   difficulties,
 		MatchChannel:   make(chan Match, 100),
 		Mux:            &sync.Mutex{},
 		Timer:          &timerMap,
@@ -31,7 +35,7 @@ func NewMatchmakingQueue() *MatchmakingQueue {
 	return queue
 }
 
-func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string) error {
+func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string, difficulty string) error {
 	m.Mux.Lock()
 	defer m.Mux.Unlock()
 
@@ -39,9 +43,25 @@ func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string) error
 		return nil
 	}
 
+	// If difficulty is specified, immediately create a bot match
+	// This means user explicitly chose to play against a bot
+	if difficulty != "" {
+		match := Match{
+			Player1ID:       userID,
+			Player1Username: username,
+			Player2ID:       nil,
+			Player2Username: BotUsername,
+			BotDifficulty:   difficulty,
+		}
+		m.MatchChannel <- match
+		return nil
+	}
+
+	// No difficulty = online matchmaking
 	if len(m.WaitingPlayers) == 0 {
 		m.WaitingPlayers[userID] = username
-		timer := time.AfterFunc(10*time.Second, func() {
+		m.Difficulties[userID] = difficulty
+		timer := time.AfterFunc(30*time.Second, func() {
 			m.HandleTimeout(userID)
 		})
 		(*m.Timer)[userID] = timer
@@ -55,6 +75,7 @@ func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string) error
 		}
 
 		delete(m.WaitingPlayers, opponentID)
+		delete(m.Difficulties, opponentID)
 		m.stopAndDeleteTimer(opponentID)
 
 		match := Match{
@@ -62,6 +83,7 @@ func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string) error
 			Player1Username: opponentUsername,
 			Player2ID:       &userID,
 			Player2Username: username,
+			BotDifficulty:   "", // PvP game, no difficulty needed
 		}
 
 		m.MatchChannel <- match
@@ -78,7 +100,13 @@ func (m *MatchmakingQueue) HandleTimeout(userID int64) {
 		return
 	}
 
+	difficulty := m.Difficulties[userID]
+	if difficulty == "" {
+		difficulty = "medium" // Default to medium
+	}
+
 	delete(m.WaitingPlayers, userID)
+	delete(m.Difficulties, userID)
 	m.stopAndDeleteTimer(userID)
 
 	match := Match{
@@ -86,6 +114,7 @@ func (m *MatchmakingQueue) HandleTimeout(userID int64) {
 		Player1Username: username,
 		Player2ID:       nil,
 		Player2Username: BotUsername,
+		BotDifficulty:   difficulty,
 	}
 
 	m.MatchChannel <- match
@@ -100,6 +129,7 @@ func (m *MatchmakingQueue) RemovePlayer(userID int64) {
 	defer m.Mux.Unlock()
 
 	delete(m.WaitingPlayers, userID)
+	delete(m.Difficulties, userID)
 	m.stopAndDeleteTimer(userID)
 }
 

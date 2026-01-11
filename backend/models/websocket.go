@@ -1,10 +1,11 @@
 package models
 
 type ClientMessage struct {
-	Type   string `json:"type"`
-	JWT    string `json:"jwt"`              // JWT token for authentication
-	GameID string `json:"gameId,omitempty"`
-	Column int    `json:"column,omitempty"`
+	Type       string `json:"type"`
+	JWT        string `json:"jwt"`                     // JWT token for authentication
+	GameID     string `json:"gameId,omitempty"`
+	Column     int    `json:"column,omitempty"`
+	Difficulty string `json:"difficulty,omitempty"`    // Bot difficulty: "easy", "medium", "hard"
 }
 
 type ServerMessage struct {

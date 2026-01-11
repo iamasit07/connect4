@@ -20,11 +20,11 @@ func NewSessionManager() *SessionManager {
 	}
 }
 
-func (sm *SessionManager) CreateSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, conn ConnectionManagerInterface) *GameSession {
+func (sm *SessionManager) CreateSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, botDifficulty string, conn ConnectionManagerInterface) *GameSession {
 	sm.Mux.Lock()
 	defer sm.Mux.Unlock()
 
-	session := NewGameSession(player1ID, player1Username, player2ID, player2Username, conn)
+	session := NewGameSession(player1ID, player1Username, player2ID, player2Username, botDifficulty, conn)
 	gameID := session.GameID
 	sm.Session[gameID] = session
 	sm.UserToGame[player1ID] = gameID
@@ -33,7 +33,7 @@ func (sm *SessionManager) CreateSession(player1ID int64, player1Username string,
 		sm.UserToGame[*player2ID] = gameID
 	}
 
-	log.Printf("[SESSION] Created session %s: %s (ID: %d) vs %s (ID: %v)\\n",
+	log.Printf("[SESSION] Created session %s: %s (ID: %d) vs %s (ID: %v)\n",
 		gameID, player1Username, player1ID, player2Username, player2ID)
 	return session
 }

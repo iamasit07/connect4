@@ -69,7 +69,7 @@ func HandleConnection(conn *websocket.Conn, connManager *ConnectionManager, matc
 func HandleWebSocket(message models.ClientMessage, conn *websocket.Conn, connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, sessionManager *server.SessionManager, userID int64, username string) {
 	switch message.Type {
 	case "join_queue":
-		HandleJoinQueue(userID, username, connManager, matchMakingQueue, sessionManager)
+		HandleJoinQueue(message, userID, username, connManager, matchMakingQueue, sessionManager)
 	case "move":
 		HandleMove(message, userID, sessionManager, connManager)
 	case "reconnect":
@@ -79,7 +79,7 @@ func HandleWebSocket(message models.ClientMessage, conn *websocket.Conn, connMan
 	}
 }
 
-func HandleJoinQueue(userID int64, username string, connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, sessionManager *server.SessionManager) {
+func HandleJoinQueue(message models.ClientMessage, userID int64, username string, connManager *ConnectionManager, matchMakingQueue *models.MatchmakingQueue, sessionManager *server.SessionManager) {
 	log.Printf("[QUEUE] User %d (%s) attempting to join queue", userID, username)
 
 	if sessionManager.HasActiveGame(userID) {
@@ -96,7 +96,10 @@ func HandleJoinQueue(userID int64, username string, connManager *ConnectionManag
 		}
 	}
 
-	err := matchMakingQueue.AddPlayerToQueue(userID, username)
+	// Extract difficulty from message (empty string means online matchmaking)
+	difficulty := message.Difficulty
+
+	err := matchMakingQueue.AddPlayerToQueue(userID, username, difficulty)
 	if err != nil {
 		log.Printf("[QUEUE] Error adding user to queue: %v", err)
 		connManager.SendMessage(userID, models.ServerMessage{
@@ -111,7 +114,7 @@ func HandleJoinQueue(userID int64, username string, connManager *ConnectionManag
 		Message: "Joined matchmaking queue",
 	})
 
-	log.Printf("[QUEUE] User %d (%s) successfully joined queue", userID, username)
+	log.Printf("[QUEUE] User %d (%s) successfully joined queue with difficulty: %s", userID, username, difficulty)
 }
 
 func HandleMove(message models.ClientMessage, userID int64, sessionManager *server.SessionManager, connManager *ConnectionManager) {
