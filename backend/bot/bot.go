@@ -23,7 +23,22 @@ const (
 	SCORE_EDGE              = 5      // Edge columns
 )
 
-func CalculateBestMove(board [][]models.PlayerID, botPlayer models.PlayerID) int {
+func CalculateBestMove(board [][]models.PlayerID, botPlayer models.PlayerID, difficulty string) int {
+	parsedDifficulty := ParseDifficulty(difficulty)
+
+	switch parsedDifficulty {
+	case DifficultyEasy:
+		return calculateEasyMove(board, botPlayer)
+	case DifficultyMedium:
+		return calculateMediumMove(board, botPlayer)
+	case DifficultyHard:
+		return calculateHardMove(board, botPlayer)
+	default:
+		return calculateMediumMove(board, botPlayer)
+	}
+}
+
+func calculateMediumMove(board [][]models.PlayerID, botPlayer models.PlayerID) int {
 	validColumns := utils.GetValidMoves(board)
 	if len(validColumns) == 0 {
 		return -1
