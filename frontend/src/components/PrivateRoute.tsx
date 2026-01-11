@@ -1,13 +1,13 @@
 import { Navigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
+import { useAuth } from "../contexts/AuthContext";
 import { useEffect, useState } from "react";
 
 interface PrivateRouteProps {
   children: React.ReactNode;
 }
-
+  
 const PrivateRoute = ({ children }: PrivateRouteProps) => {
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [isChecking, setIsChecking] = useState(true);
   const [isAuthed, setIsAuthed] = useState(false);
 
@@ -16,16 +16,11 @@ const PrivateRoute = ({ children }: PrivateRouteProps) => {
     const checkAuth = () => {
       const authed = isAuthenticated();
       setIsAuthed(authed);
-      
-      if (!authed) {
-        logout(); // Clear any stale credentials
-      }
-      
       setIsChecking(false);
     };
     
     checkAuth();
-  }, [isAuthenticated, logout]);
+  }, [isAuthenticated]);
 
   // Show nothing while checking (prevents flash of redirect)
   if (isChecking) {

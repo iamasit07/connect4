@@ -71,7 +71,9 @@ func main() {
 
 	// Auth routes
 	mux.HandleFunc("/api/auth/signup", handlers.HandleSignup)
-	mux.HandleFunc("/api/auth/login", handlers.HandleLogin)
+	mux.HandleFunc("/api/auth/login", handlers.MakeHandleLogin(connectionManager))
+	mux.HandleFunc("/api/auth/logout", handlers.HandleLogout)
+	mux.HandleFunc("/api/auth/me", handlers.HandleMe)
 
 	mux.HandleFunc("/api/leaderboard", func(w http.ResponseWriter, r *http.Request) {
 		leaderboard, err := db.GetLeaderboard()

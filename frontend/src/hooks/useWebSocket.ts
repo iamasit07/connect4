@@ -6,6 +6,7 @@ import {
   ServerMessage,
 } from "../types/game";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 interface UseWebSocketReturn {
   connected: boolean;
@@ -39,19 +40,18 @@ const useWebSocket = (): UseWebSocketReturn => {
 
   const ws = useRef<WebSocket | null>(null);
   const navigate = useNavigate();
+  const { getToken, logout } = useAuth();
 
   useEffect(() => {
     const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
     ws.current = new WebSocket(`${wsUrl}/ws`);
 
     ws.current.onopen = () => {
-      console.log("WebSocket connected");
       setConnected(true);
     };
 
     ws.current.onmessage = (event: MessageEvent) => {
       const message: ServerMessage = JSON.parse(event.data);
-      console.log("Received message:", message);
 
       switch (message.type) {
         case "queue_joined":
@@ -127,19 +127,15 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "force_disconnect":
-          console.log("Force disconnect:", message.message);
-          localStorage.removeItem("authToken");
+          // Clear gameID from localStorage
           localStorage.removeItem("gameID");
           
+          // Logout to clear the HttpOnly cookie (don't await, fire and forget)
+          logout();
+          
+          // Navigate and show alert
           navigate("/login");
           alert(message.message || "You have been logged out");
-          break;
-        case "not_authenticated":
-        case "invalid_token":
-        case "token_mismatch":
-          console.error("Authentication error:", message.message);
-          localStorage.removeItem("authToken");
-          navigate("/login");
           break;
         case "error":
         case "queue_error":
@@ -162,7 +158,6 @@ const useWebSocket = (): UseWebSocketReturn => {
         case "not_in_game":
         case "game_finished":
         case "game_not_found":
-          console.log("Fatal error:", message.type);
           localStorage.removeItem("gameID");
           
           setGameState((prevState: GameState) => ({
@@ -185,7 +180,7 @@ const useWebSocket = (): UseWebSocketReturn => {
     };
 
     ws.current.onclose = () => {
-      console.log("WebSocket disconnected");
+      console.log("WebSocket closed");
       setConnected(false);
     };
 
@@ -198,7 +193,6 @@ const useWebSocket = (): UseWebSocketReturn => {
 
   const sendMessage = (message: ClientMessage) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      console.log("Sending message:", message);
       ws.current.send(JSON.stringify(message));
     } else {
       console.error(
@@ -209,8 +203,7 @@ const useWebSocket = (): UseWebSocketReturn => {
   };
 
   const joinQueue = () => {
-    console.log("joinQueue called");
-    const jwt = localStorage.getItem("authToken") || "";
+    const jwt = getToken() || "";
     
     if (!jwt) {
       console.error("No auth token found");
@@ -223,16 +216,15 @@ const useWebSocket = (): UseWebSocketReturn => {
 
   const makeMove = (column: number) => {
     if (gameState.gameId) {
-      const jwt = localStorage.getItem("authToken") || "";
+      const jwt = getToken() || "";
       sendMessage({ type: "move", column, jwt });
     }
   };
 
   const reconnect = (gameID?: string) => {
-    const jwt = localStorage.getItem("authToken") || "";
+    const jwt = getToken() || "";
     
     if (!jwt) {
-      console.error("Reconnect failed: No auth token found");
       setGameState((prevState: GameState) => ({
         ...prevState,
         matchEnded: true,
@@ -244,8 +236,6 @@ const useWebSocket = (): UseWebSocketReturn => {
       navigate("/login");
       return;
     }
-
-    console.log("Reconnecting to game:", gameID || "(auto-find active game)");
     
     sendMessage({
       type: "reconnect",

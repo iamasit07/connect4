@@ -16,7 +16,6 @@ const GamePage: React.FC = () => {
   useEffect(() => {
     if (gameState.gameId && urlGameID !== gameState.gameId) {
       window.history.replaceState(null, '', `/game/${gameState.gameId}`);
-      console.log(`Updated URL to /game/${gameState.gameId} without remounting`);
     }
   }, [gameState.gameId, urlGameID]);
 
@@ -26,7 +25,6 @@ const GamePage: React.FC = () => {
         hasJoinedQueue.current = true;
 
         setTimeout(() => {
-          console.log("Reconnecting to game:", urlGameID);
           reconnect(urlGameID);
         }, 100);
       }
@@ -39,7 +37,6 @@ const GamePage: React.FC = () => {
         localStorage.removeItem("gameID");
 
         setTimeout(() => {
-          console.log("Joining matchmaking queue");
           joinQueue();
         }, 100);
       }
@@ -50,7 +47,6 @@ const GamePage: React.FC = () => {
         hasJoinedQueue.current = true;
 
         setTimeout(() => {
-          console.log("Auto-reconnecting to active game");
           reconnect("");
         }, 100);
       }
@@ -76,7 +72,6 @@ const GamePage: React.FC = () => {
       : null;
 
   const handleColumnClick = (col: number) => {
-    console.log("Column clicked:", col);
     makeMove(col);
   };
 

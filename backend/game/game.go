@@ -11,13 +11,8 @@ type Game struct {
 }
 
 func(g *Game) NewGame() *Game {
-	board := make([][]models.PlayerID, models.Rows)
-	for i := range board {
-		board[i] = make([]models.PlayerID, models.Columns)
-	}
-
 	return &Game{
-		Board: board,
+		Board: NewBoard(),
 		CurrentPlayer: models.Player1,
 		Status: models.StatusActive,
 		Winner: models.Empty,

@@ -36,37 +36,59 @@ func CalculateBestMove(board [][]models.PlayerID, botPlayer models.PlayerID) int
 		scores[col] = 0
 	}
 
+	// Pre-calculate simulated boards for each column to avoid redundant simulations
+	botSimulations := make(map[int]struct {
+		board [][]models.PlayerID
+		row   int
+	})
+	oppSimulations := make(map[int]struct {
+		board [][]models.PlayerID
+		row   int
+	})
+
+	for _, col := range validColumns {
+		botBoard, botRow, _ := utils.SimulateMove(board, col, botPlayer)
+		botSimulations[col] = struct {
+			board [][]models.PlayerID
+			row   int
+		}{botBoard, botRow}
+
+		oppBoard, oppRow, _ := utils.SimulateMove(board, col, opponent)
+		oppSimulations[col] = struct {
+			board [][]models.PlayerID
+			row   int
+		}{oppBoard, oppRow}
+	}
+
 	// === PHASE 1: Check for immediate wins (highest priority) ===
 	for _, col := range validColumns {
-		newBoard, row, _ := utils.SimulateMove(board, col, botPlayer)
-		if game.CheckWin(newBoard, row, col, botPlayer) {
+		sim := botSimulations[col]
+		if game.CheckWin(sim.board, sim.row, col, botPlayer) {
 			scores[col] += SCORE_WIN_NOW
 		}
 	}
 
 	// === PHASE 2: Block opponent's immediate wins ===
 	for _, col := range validColumns {
-		newBoard, row, _ := utils.SimulateMove(board, col, opponent)
-		if game.CheckWin(newBoard, row, col, opponent) {
+		sim := oppSimulations[col]
+		if game.CheckWin(sim.board, sim.row, col, opponent) {
 			scores[col] += SCORE_BLOCK_WIN
 		}
 	}
 
 	// === PHASE 3: Look ahead - Create winning threats (3 steps with opponent response) ===
 	for _, col := range validColumns {
-		boardAfterBotMove, _, _ := utils.SimulateMove(board, col, botPlayer)
-
-		// Check if bot can create an UNBLOCKABLE winning threat
-		threatScore := evaluateWinningThreat(boardAfterBotMove, botPlayer, opponent)
+		sim := botSimulations[col]
+		threatScore := evaluateWinningThreat(sim.board, botPlayer, opponent)
 		scores[col] += threatScore
 	}
 
 	// === PHASE 4: Block opponent's winning threats (3 steps) ===
 	for _, col := range validColumns {
-		boardAfterBotMove, _, _ := utils.SimulateMove(board, col, botPlayer)
-
+		sim := botSimulations[col]
+		
 		// After bot moves, what's opponent's best winning threat?
-		opponentThreatScore := evaluateWinningThreat(boardAfterBotMove, opponent, botPlayer)
+		opponentThreatScore := evaluateWinningThreat(sim.board, opponent, botPlayer)
 
 		// If this move REDUCES opponent's threat, give it points
 		currentOpponentThreat := evaluateWinningThreat(board, opponent, botPlayer)
@@ -77,78 +99,35 @@ func CalculateBestMove(board [][]models.PlayerID, botPlayer models.PlayerID) int
 
 	// === PHASE 5: Evaluate current position strength ===
 	for _, col := range validColumns {
-		newBoard, row, _ := utils.SimulateMove(board, col, botPlayer)
-
-		// Count bot's threats
-		botThreats := evaluateThreats(newBoard, row, col, botPlayer)
+		botSim := botSimulations[col]
+		botThreats := evaluateThreats(botSim.board, botSim.row, col, botPlayer)
 		scores[col] += botThreats
 
 		// Count and block opponent's threats
-		oppBoard, oppRow, _ := utils.SimulateMove(board, col, opponent)
-		oppThreats := evaluateThreats(oppBoard, oppRow, col, opponent)
+		oppSim := oppSimulations[col]
+		oppThreats := evaluateThreats(oppSim.board, oppSim.row, col, opponent)
 		scores[col] += oppThreats / 2 // Half value for blocking vs creating
 	}
 
 	// === PHASE 6: Positional bonuses (center preference) ===
+	center := models.Columns / 2
 	for _, col := range validColumns {
-		switch col {
-		case 3:
+		distFromCenter := col - center
+		if distFromCenter < 0 {
+			distFromCenter = -distFromCenter
+		}
+
+		switch distFromCenter {
+		case 0:
 			scores[col] += SCORE_CENTER
-		case 2, 4:
+		case 1:
 			scores[col] += SCORE_NEAR_CENTER
-		case 1, 5:
+		case 2:
 			scores[col] += SCORE_EDGE
 		}
 	}
 
 	return findBestColumn(scores)
-}
-
-// Evaluate winning threats considering opponent's best response
-// Returns score based on how many UNBLOCKABLE winning moves the player has
-func evaluateWinningThreat(board [][]models.PlayerID, player models.PlayerID, opponent models.PlayerID) int {
-	validMoves := utils.GetValidMoves(board)
-	winningMoves := []int{}
-
-	// Find all columns where player can win immediately
-	for _, col := range validMoves {
-		testBoard, row, _ := utils.SimulateMove(board, col, player)
-		if game.CheckWin(testBoard, row, col, player) {
-			winningMoves = append(winningMoves, col)
-		}
-	}
-
-	// If player has 2+ winning moves, opponent can only block one = UNBLOCKABLE
-	if len(winningMoves) >= 2 {
-		return SCORE_CREATE_WIN_THREAT // This is a winning position!
-	}
-
-	// If player has 1 winning move, check if opponent can block it
-	if len(winningMoves) == 1 {
-		winCol := winningMoves[0]
-
-		// Simulate opponent blocking
-		blockBoard, _, _ := utils.SimulateMove(board, winCol, opponent)
-
-		// After block, can player still create threats?
-		stillHasThreat := false
-		nextMoves := utils.GetValidMoves(blockBoard)
-		for _, nextCol := range nextMoves {
-			futureBoard, futureRow, _ := utils.SimulateMove(blockBoard, nextCol, player)
-			if game.CheckWin(futureBoard, futureRow, nextCol, player) {
-				stillHasThreat = true
-				break
-			}
-		}
-
-		if stillHasThreat {
-			return SCORE_CREATE_WIN_THREAT / 2 // Blockable but still valuable
-		}
-
-		return SCORE_CREATE_WIN_THREAT / 4 // Easily blockable
-	}
-
-	return 0 // No immediate winning threat
 }
 
 // Check if there's room to extend a line (critical for real threats)

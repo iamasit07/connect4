@@ -25,6 +25,7 @@ class ApiClient {
     const url = `${this.baseURL}${endpoint}`;
     const config: RequestInit = {
       ...options,
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
@@ -59,6 +60,18 @@ class ApiClient {
     return this.request<AuthResponse>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+    });
+  }
+
+  async logout(): Promise<void> {
+    return this.request<void>('/api/auth/logout', {
+      method: 'POST',
+    });
+  }
+
+  async me(): Promise<AuthResponse> {
+    return this.request<AuthResponse>('/api/auth/me', {
+      method: 'GET',
     });
   }
 }

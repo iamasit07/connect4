@@ -27,20 +27,11 @@ const Board: FC<BoardProps> = ({
   };
 
   const handleColumnClick = (col: number) => {
-    console.log("Board column clicked:", col, "isYourTurn:", isYourTurn);
-
     if (!isYourTurn) {
-      console.log(
-        "Not your turn! Your player:",
-        yourPlayer,
-        "Current turn:",
-        currentTurn
-      );
       return;
     }
 
     if (board[0][col] !== 0) {
-      console.log("Column is full!");
       return;
     }
 
