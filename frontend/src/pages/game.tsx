@@ -107,15 +107,6 @@ const GamePage: React.FC = () => {
   }
 
   if (gameState.inQueue) {
-    const difficultyDisplay =
-      difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
-    const difficultyColor =
-      difficulty === "easy"
-        ? "text-green-600"
-        : difficulty === "hard"
-        ? "text-red-600"
-        : "text-blue-600";
-
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center">
