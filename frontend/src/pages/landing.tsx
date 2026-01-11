@@ -7,17 +7,19 @@ const LandingPage = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
-  const handleStartGame = () => {
+  const handlePlayOnline = () => {
     localStorage.removeItem("gameID");
     navigate("/game/queue");
   };
 
+  const handlePlayBot = () => {
+    navigate("/bot-difficulty");
+  };
+
   const handleReconnect = () => {
-    // Navigate to game page with optional gameID
     if (reconnectGameID.trim()) {
       navigate(`/game/${reconnectGameID}`);
     } else {
-      // Empty gameID → navigate to /game (no path) for auto-reconnect
       navigate("/game");
     }
   };
@@ -45,12 +47,23 @@ const LandingPage = () => {
           <h2 className="text-lg font-semibold text-gray-800 mb-3">
             Start New Game
           </h2>
-          <button
-            onClick={handleStartGame}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-          >
-            Play Game
-          </button>
+          
+          <div className="space-y-2">
+            <button
+              onClick={handlePlayOnline}
+              className="w-full px-4 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium flex items-center justify-center gap-2"
+            >
+              <span className="text-xl">👥</span>
+              <span>Play Online</span>
+            </button>
+            <button
+              onClick={handlePlayBot}
+              className="w-full px-4 py-3 bg-purple-600 text-white rounded hover:bg-purple-700 transition font-medium flex items-center justify-center gap-2"
+            >
+              <span className="text-xl">🤖</span>
+              <span>Play vs Bot</span>
+            </button>
+          </div>
         </div>
 
         {/* Reconnect Section */}

@@ -11,7 +11,7 @@ import { useAuth } from "../contexts/AuthContext";
 interface UseWebSocketReturn {
   connected: boolean;
   gameState: GameState;
-  joinQueue: () => void;
+  joinQueue: (difficulty?: string) => void;
   makeMove: (column: number) => void;
   reconnect: (gameID?: string) => void;
 }
@@ -202,7 +202,7 @@ const useWebSocket = (): UseWebSocketReturn => {
     }
   };
 
-  const joinQueue = () => {
+  const joinQueue = (difficulty?: string) => {
     const jwt = getToken() || "";
     
     if (!jwt) {
@@ -211,7 +211,11 @@ const useWebSocket = (): UseWebSocketReturn => {
       return;
     }
     
-    sendMessage({ type: "join_queue", jwt });
+    sendMessage({ 
+      type: "join_queue", 
+      jwt,
+      difficulty: difficulty || ""
+    });
   };
 
   const makeMove = (column: number) => {

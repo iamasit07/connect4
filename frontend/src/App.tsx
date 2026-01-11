@@ -4,6 +4,7 @@ import LandingPage from "./pages/landing";
 import LoginPage from "./pages/login";
 import SignupPage from "./pages/signup";
 import GamePage from "./pages/game";
+import BotDifficulty from "./pages/BotDifficulty";
 import LeaderboardPage from "./pages/leaderboard";
 import PrivateRoute from "./components/PrivateRoute";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -36,6 +37,14 @@ function App() {
             element={
               <PrivateRoute>
                 <GamePage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/bot-difficulty"
+            element={
+              <PrivateRoute>
+                <BotDifficulty />
               </PrivateRoute>
             }
           />

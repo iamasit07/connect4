@@ -39,4 +39,5 @@ export interface ClientMessage {
   jwt: string;
   gameID?: string;
   column?: number;
+  difficulty?: string;
 }

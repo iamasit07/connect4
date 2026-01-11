@@ -13,9 +13,13 @@ const GamePage: React.FC = () => {
   const hasJoinedQueue = useRef(false);
   const [, forceUpdate] = React.useState(0);
 
+  // Extract difficulty from URL query parameter
+  const searchParams = new URLSearchParams(window.location.search);
+  const difficulty = searchParams.get("difficulty") || ""; // Empty for online matchmaking
+
   useEffect(() => {
     if (gameState.gameId && urlGameID !== gameState.gameId) {
-      window.history.replaceState(null, '', `/game/${gameState.gameId}`);
+      window.history.replaceState(null, "", `/game/${gameState.gameId}`);
     }
   }, [gameState.gameId, urlGameID]);
 
@@ -37,7 +41,7 @@ const GamePage: React.FC = () => {
         localStorage.removeItem("gameID");
 
         setTimeout(() => {
-          joinQueue();
+          joinQueue(difficulty);
         }, 100);
       }
       return;
@@ -55,7 +59,7 @@ const GamePage: React.FC = () => {
 
     console.warn("Invalid game route, redirecting to home");
     navigate("/");
-  }, [connected, navigate, joinQueue, reconnect, urlGameID]);
+  }, [connected, navigate, joinQueue, reconnect, urlGameID, difficulty]);
 
   useEffect(() => {
     if (gameState.inQueue && gameState.queuedAt) {
@@ -68,8 +72,16 @@ const GamePage: React.FC = () => {
 
   const queueCountdown =
     gameState.inQueue && gameState.queuedAt
-      ? Math.max(0, 10 - Math.floor((Date.now() - gameState.queuedAt) / 1000))
+      ? Math.max(0, 30 - Math.floor((Date.now() - gameState.queuedAt) / 1000))
       : null;
+
+  // Redirect to bot difficulty page when matchmaking times out (only for online matchmaking)
+  useEffect(() => {
+    if (queueCountdown === 0 && gameState.inQueue && !difficulty) {
+      // Timeout for online matchmaking - redirect to bot difficulty selection
+      navigate("/bot-difficulty");
+    }
+  }, [queueCountdown, gameState.inQueue, difficulty, navigate]);
 
   const handleColumnClick = (col: number) => {
     makeMove(col);
@@ -95,6 +107,15 @@ const GamePage: React.FC = () => {
   }
 
   if (gameState.inQueue) {
+    const difficultyDisplay =
+      difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+    const difficultyColor =
+      difficulty === "easy"
+        ? "text-green-600"
+        : difficulty === "hard"
+        ? "text-red-600"
+        : "text-blue-600";
+
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center">
