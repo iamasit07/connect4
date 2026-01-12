@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -84,6 +85,17 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(leaderboard)
+	})
+
+	// Game routes
+	mux.HandleFunc("/api/games/history", handlers.HandleGameHistory)
+	mux.HandleFunc("/api/game/", func(w http.ResponseWriter, r *http.Request) {
+		// Route: /api/game/:gameID/board
+		if strings.HasSuffix(r.URL.Path, "/board") {
+			handlers.HandleGetBoard(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
 	})
 
 	httpServer := &http.Server{

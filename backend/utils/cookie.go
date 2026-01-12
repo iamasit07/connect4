@@ -21,13 +21,15 @@ func SetAuthCookie(w http.ResponseWriter, token string) {
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   isProduction,
+		Secure:   isProduction, // Only require HTTPS in production
 	}
 
+	// SameSite=None requires Secure=true, so use Lax for development
 	if isProduction {
 		cookie.SameSite = http.SameSiteNoneMode
+		cookie.Secure = true // Must be true for SameSite=None
 	} else {
-		cookie.SameSite = http.SameSiteNoneMode
+		cookie.SameSite = http.SameSiteLaxMode // Works for localhost without HTTPS
 	}
 
 	http.SetCookie(w, cookie)

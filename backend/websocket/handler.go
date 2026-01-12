@@ -74,6 +74,10 @@ func HandleWebSocket(message models.ClientMessage, conn *websocket.Conn, connMan
 		HandleMove(message, userID, sessionManager, connManager)
 	case "reconnect":
 		HandleReconnect(message, userID, sessionManager, connManager)
+	case "rematch_request":
+		HandleRematchRequest(userID, sessionManager, connManager)
+	case "rematch_response":
+		HandleRematchResponse(message, userID, sessionManager, connManager)
 	default:
 		SendErrorMessage(conn, "unknown_message_type", "Unknown message type")
 	}
@@ -215,6 +219,48 @@ func HandleDisconnect(userID int64, connManager *ConnectionManager, sessionManag
 	err := session.HandleDisconnect(userID, connManager, sessionManager)
 	if err != nil {
 		log.Printf("[DISCONNECT] Error handling disconnect for user %d: %v", userID, err)
+	}
+}
+
+func HandleRematchRequest(userID int64, sessionManager *server.SessionManager, connManager *ConnectionManager) {
+	session, exists := sessionManager.GetSessionByUserID(userID)
+	if !exists {
+		connManager.SendMessage(userID, models.ServerMessage{
+			Type:    "no_active_game",
+			Message: "No active game found",
+		})
+		return
+	}
+
+	err := session.HandleRematchRequest(userID, connManager, sessionManager)
+	if err != nil {
+		log.Printf("[REMATCH] Error handling rematch request for user %d: %v", userID, err)
+		connManager.SendMessage(userID, models.ServerMessage{
+			Type:    "rematch_error",
+			Message: err.Error(),
+		})
+		return
+	}
+}
+
+func HandleRematchResponse(message models.ClientMessage, userID int64, sessionManager *server.SessionManager, connManager *ConnectionManager) {
+	session, exists := sessionManager.GetSessionByUserID(userID)
+	if !exists {
+		connManager.SendMessage(userID, models.ServerMessage{
+			Type:    "no_active_game",
+			Message: "No active game found",
+		})
+		return
+	}
+
+	err := session.HandleRematchResponse(userID, message.RematchResponse, connManager, sessionManager)
+	if err != nil {
+		log.Printf("[REMATCH] Error handling rematch response for user %d: %v", userID, err)
+		connManager.SendMessage(userID, models.ServerMessage{
+			Type:    "rematch_error",
+			Message: err.Error(),
+		})
+		return
 	}
 }
 
