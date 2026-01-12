@@ -232,14 +232,14 @@ const GamePage: React.FC = () => {
         gameOver={gameState.gameOver}
       />
 
-      {gameState.gameOver && (
+      
         <div className="flex gap-3">
-          <button
+          {gameState.gameOver && !showPostGameNotification && (<button
             onClick={handleRematchRequest}
             className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
           >
             Request Rematch
-          </button>
+          </button>)}
           <button
             onClick={handlePlayAgain}
             className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
@@ -247,7 +247,7 @@ const GamePage: React.FC = () => {
             Back to Home
           </button>
         </div>
-      )}
+      
 
       <DisconnectNotification
         isDisconnected={gameState.opponentDisconnected}
