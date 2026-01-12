@@ -26,7 +26,7 @@ const ErrorNotification: React.FC<ErrorNotificationProps> = ({
 
       if (countdown === 0) {
         clearInterval(interval);
-        localStorage.removeItem("gameID");
+        sessionStorage.removeItem("gameID");
         navigate("/");
         return;
       }

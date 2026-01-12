@@ -27,6 +27,7 @@ type ServerMessage struct {
 	TimeRemaining    int          `json:"timeRemaining,omitempty"`
 	RematchRequester string       `json:"rematchRequester,omitempty"` // username who requested rematch
 	RematchTimeout   int          `json:"rematchTimeout,omitempty"`   // seconds remaining to respond
+	AllowRematch     *bool        `json:"allowRematch,omitempty"`     // Controls if rematch button shows (pointer for explicit false)
 }
 
 type ErrorMessage struct {

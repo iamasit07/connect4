@@ -16,6 +16,7 @@ import (
 	"github.com/iamasit07/4-in-a-row/backend/config"
 	"github.com/iamasit07/4-in-a-row/backend/db"
 	"github.com/iamasit07/4-in-a-row/backend/handlers"
+	"github.com/iamasit07/4-in-a-row/backend/jobs"
 	"github.com/iamasit07/4-in-a-row/backend/middlewares"
 	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/server"
@@ -31,6 +32,7 @@ func main() {
 	}
 
 	config.LoadConfig()
+	config.LoadOAuthConfig()
 
 	dbUri := config.GetEnv("DB_URI", "")
 	port := config.GetEnv("PORT", "8080")
@@ -45,9 +47,19 @@ func main() {
 	}
 	defer db.CloseDB()
 
+	// Initialize Redis (graceful fallback if unavailable)
+	err = db.InitRedis()
+	if err != nil {
+		log.Printf("Redis initialization warning: %v", err)
+	}
+	defer db.CloseRedis()
+
 	connectionManager := websocket.NewConnectionManager()
 	matchMakingQueue := models.NewMatchmakingQueue()
 	sessionManager := server.NewSessionManager()
+
+	// Start session cleanup cron job
+	jobs.StartSessionCleanupCron()
 
 	go MatchMakingListener(matchMakingQueue, connectionManager, sessionManager)
 
@@ -75,6 +87,12 @@ func main() {
 	mux.HandleFunc("/api/auth/login", handlers.MakeHandleLogin(connectionManager))
 	mux.HandleFunc("/api/auth/logout", handlers.HandleLogout)
 	mux.HandleFunc("/api/auth/me", handlers.HandleMe)
+	mux.HandleFunc("/api/auth/google/login", handlers.HandleGoogleLogin)
+	mux.HandleFunc("/api/auth/google/callback", handlers.HandleGoogleCallback)
+	mux.HandleFunc("/api/auth/google/complete", handlers.HandleCompleteGoogleSignup)
+
+	// Session routes
+	mux.HandleFunc("/api/sessions/history", handlers.HandleSessionHistory)
 
 	mux.HandleFunc("/api/leaderboard", func(w http.ResponseWriter, r *http.Request) {
 		leaderboard, err := db.GetLeaderboard()

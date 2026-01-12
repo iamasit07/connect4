@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 
 interface RematchNotificationProps {
   isRequested: boolean;
@@ -15,46 +15,38 @@ const RematchNotification: React.FC<RematchNotificationProps> = ({
   onAccept,
   onDecline,
 }) => {
-  const [countdown, setCountdown] = useState(timeout || 0);
-
-  useEffect(() => {
-    if (isRequested && timeout) {
-      setCountdown(timeout);
-      const interval = setInterval(() => {
-        setCountdown((prev) => Math.max(0, prev - 1));
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [isRequested, timeout]);
-
-  if (!isRequested || !requesterName) {
-    return null;
-  }
+  if (!isRequested) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4 text-center">
-          Rematch Request
-        </h2>
-        <p className="text-gray-700 text-center mb-4">
-          <span className="font-semibold text-blue-600">{requesterName}</span>{" "}
-          wants a rematch!
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+      <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4 animate-fade-in-up">
+        <h3 className="text-xl font-bold text-gray-900 mb-2">Rematch Request</h3>
+        <p className="text-gray-600 mb-6">
+          <span className="font-semibold text-blue-600">{requesterName || "Opponent"}</span> wants a rematch!
         </p>
-        <p className="text-sm text-gray-500 text-center mb-6">
-          Time remaining:{" "}
-          <span className="font-bold text-red-600">{countdown}s</span>
-        </p>
-        <div className="flex gap-3">
+        
+        {timeout !== null && (
+          <div className="mb-4">
+             <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-1000 ease-linear" 
+                  style={{ width: `${(timeout / 30) * 100}%` }}
+                ></div>
+             </div>
+             <p className="text-xs text-gray-500 mt-1 text-right">{timeout}s remaining</p>
+          </div>
+        )}
+
+        <div className="flex gap-3 justify-end">
           <button
             onClick={onDecline}
-            className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition font-medium"
+            className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition focus:outline-none focus:ring-2 focus:ring-gray-300"
           >
             Decline
           </button>
           <button
             onClick={onAccept}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition font-medium"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             Accept
           </button>

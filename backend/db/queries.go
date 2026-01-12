@@ -10,6 +10,9 @@ import (
 type User struct {
 	ID           int64
 	Username     string
+	Email        sql.NullString
+	GoogleID     sql.NullString
+	IsVerified   bool
 	PasswordHash string
 	GamesPlayed  int
 	GamesWon     int
@@ -23,15 +26,26 @@ type PlayerStats struct {
 	WinRate     float64 `json:"win_rate"`
 }
 
-// CreateUser creates a new user with hashed password
-func CreateUser(username, passwordHash string) (int64, error) {
+// CreateUser creates a new user with hashed password and optional email/google_id
+func CreateUser(username, passwordHash string, email, googleID string) (int64, error) {
+	// Handle empty strings as NULL
+	var emailParam, googleIDParam interface{}
+	emailParam = nil
+	if email != "" {
+		emailParam = email
+	}
+	googleIDParam = nil
+	if googleID != "" {
+		googleIDParam = googleID
+	}
+
 	query := `
-	INSERT INTO players (username, password_hash, games_played, games_won)
-	VALUES ($1, $2, 0, 0)
+	INSERT INTO players (username, password_hash, email, google_id, games_played, games_won)
+	VALUES ($1, $2, $3, $4, 0, 0)
 	RETURNING id;
 	`
 	var userID int64
-	err := DB.QueryRow(query, username, passwordHash).Scan(&userID)
+	err := DB.QueryRow(query, username, passwordHash, emailParam, googleIDParam).Scan(&userID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create user: %v", err)
 	}
@@ -41,7 +55,7 @@ func CreateUser(username, passwordHash string) (int64, error) {
 // GetUserByUsername retrieves a user by username
 func GetUserByUsername(username string) (*User, error) {
 	query := `
-	SELECT id, username, password_hash, games_played, games_won, created_at
+	SELECT id, username, email, google_id, is_verified, password_hash, games_played, games_won, created_at
 	FROM players
 	WHERE username = $1;
 	`
@@ -49,6 +63,107 @@ func GetUserByUsername(username string) (*User, error) {
 	err := DB.QueryRow(query, username).Scan(
 		&user.ID,
 		&user.Username,
+		&user.Email,
+		&user.GoogleID,
+		&user.IsVerified,
+		&user.PasswordHash,
+		&user.GamesPlayed,
+		&user.GamesWon,
+		&user.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %v", err)
+	}
+	return &user, nil
+}
+
+// GetUserByEmail retrieves a user by email
+func GetUserByEmail(email string) (*User, error) {
+	query := `
+	SELECT id, username, email, google_id, is_verified, password_hash, games_played, games_won, created_at
+	FROM players
+	WHERE email = $1;
+	`
+	var user User
+	err := DB.QueryRow(query, email).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.GoogleID,
+		&user.IsVerified,
+		&user.PasswordHash,
+		&user.GamesPlayed,
+		&user.GamesWon,
+		&user.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %v", err)
+	}
+	return &user, nil
+}
+
+// GetUserByIdentifier retrieves a user by username OR email
+func GetUserByIdentifier(identifier string) (*User, error) {
+	query := `
+	SELECT id, username, email, google_id, is_verified, password_hash, games_played, games_won, created_at
+	FROM players
+	WHERE username = $1 OR email = $1;
+	`
+	var user User
+	err := DB.QueryRow(query, identifier).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.GoogleID,
+		&user.IsVerified,
+		&user.PasswordHash,
+		&user.GamesPlayed,
+		&user.GamesWon,
+		&user.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %v", err)
+	}
+	return &user, nil
+}
+
+// UpdateUserGoogleID updates a user's Google ID based on their email
+func UpdateUserGoogleID(email, googleID string) error {
+	query := `
+	UPDATE players
+	SET google_id = $2, is_verified = TRUE
+	WHERE email = $1;
+	`
+	_, err := DB.Exec(query, email, googleID)
+	if err != nil {
+		return fmt.Errorf("failed to update google id: %v", err)
+	}
+	return nil
+}
+
+// GetUserByGoogleID retrieves a user by Google ID
+func GetUserByGoogleID(googleID string) (*User, error) {
+	query := `
+	SELECT id, username, email, google_id, is_verified, password_hash, games_played, games_won, created_at
+	FROM players
+	WHERE google_id = $1;
+	`
+	var user User
+	err := DB.QueryRow(query, googleID).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.GoogleID,
+		&user.IsVerified,
 		&user.PasswordHash,
 		&user.GamesPlayed,
 		&user.GamesWon,
@@ -66,7 +181,7 @@ func GetUserByUsername(username string) (*User, error) {
 // GetUserByID retrieves a user by ID
 func GetUserByID(userID int64) (*User, error) {
 	query := `
-	SELECT id, username, password_hash, games_played, games_won, created_at
+	SELECT id, username, email, google_id, is_verified, password_hash, games_played, games_won, created_at
 	FROM players
 	WHERE id = $1;
 	`
@@ -74,6 +189,9 @@ func GetUserByID(userID int64) (*User, error) {
 	err := DB.QueryRow(query, userID).Scan(
 		&user.ID,
 		&user.Username,
+		&user.Email,
+		&user.GoogleID,
+		&user.IsVerified,
 		&user.PasswordHash,
 		&user.GamesPlayed,
 		&user.GamesWon,

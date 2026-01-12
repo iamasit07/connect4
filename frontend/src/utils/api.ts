@@ -49,10 +49,10 @@ class ApiClient {
     }
   }
 
-  async signup(username: string, password: string): Promise<AuthResponse> {
+  async signup(username: string, email: string, password: string): Promise<AuthResponse> {
     return this.request<AuthResponse>('/api/auth/signup', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, email, password }),
     });
   }
 

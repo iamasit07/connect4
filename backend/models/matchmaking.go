@@ -3,6 +3,8 @@ package models
 import (
 	"sync"
 	"time"
+
+	"github.com/iamasit07/4-in-a-row/backend/config"
 )
 
 type Match struct {
@@ -61,7 +63,8 @@ func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string, diffi
 	if len(m.WaitingPlayers) == 0 {
 		m.WaitingPlayers[userID] = username
 		m.Difficulties[userID] = difficulty
-		timer := time.AfterFunc(30*time.Second, func() {
+		// Use config timeout (5 minutes default)
+		timer := time.AfterFunc(config.AppConfig.OnlineMatchmakingTimeout, func() {
 			m.HandleTimeout(userID)
 		})
 		(*m.Timer)[userID] = timer
@@ -95,29 +98,14 @@ func (m *MatchmakingQueue) HandleTimeout(userID int64) {
 	m.Mux.Lock()
 	defer m.Mux.Unlock()
 
-	username, exists := m.WaitingPlayers[userID]
+	_, exists := m.WaitingPlayers[userID]
 	if !exists {
 		return
-	}
-
-	difficulty := m.Difficulties[userID]
-	if difficulty == "" {
-		difficulty = "medium" // Default to medium
 	}
 
 	delete(m.WaitingPlayers, userID)
 	delete(m.Difficulties, userID)
 	m.stopAndDeleteTimer(userID)
-
-	match := Match{
-		Player1ID:       userID,
-		Player1Username: username,
-		Player2ID:       nil,
-		Player2Username: BotUsername,
-		BotDifficulty:   difficulty,
-	}
-
-	m.MatchChannel <- match
 }
 
 func (m *MatchmakingQueue) GetMatchChannel() chan Match {

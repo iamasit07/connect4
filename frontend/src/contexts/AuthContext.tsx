@@ -7,10 +7,11 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   login: (username: string, password: string) => Promise<boolean>;
-  signup: (username: string, password: string) => Promise<boolean>;
+  signup: (username: string, email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   isAuthenticated: () => boolean;
   getToken: () => string | null;
+  initialLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,6 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const authInitialized = useRef(false);
 
@@ -40,11 +42,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("No active session, user not authenticated");
         setToken(null);
         setUser(null);
+      } finally {
+        setInitialLoading(false);
       }
     };
 
     initAuth().catch((err) => {
       console.error("Auth initialization error:", err);
+      setInitialLoading(false);
     });
   }, []);
 
@@ -88,12 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signup = useCallback(
-    async (username: string, password: string): Promise<boolean> => {
+    async (username: string, email: string, password: string): Promise<boolean> => {
       setLoading(true);
       setError(null);
 
       try {
-        const response = await apiClient.signup(username, password);
+        const response = await apiClient.signup(username, email, password);
         setToken(response.token);
         setUser({
           id: response.user_id,
@@ -136,6 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = {
     user,
     loading,
+    initialLoading,
     error,
     login,
     signup,
