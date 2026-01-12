@@ -5,21 +5,26 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/iamasit07/4-in-a-row/backend/db"
+	"github.com/iamasit07/4-in-a-row/backend/models"
 	"github.com/iamasit07/4-in-a-row/backend/utils"
 )
 
 type SignupRequest struct {
 	Username string `json:"username"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Identifier string `json:"username"` // Can be username or email. Mapped from "username" json field to avoid frontend changes if possible, or we change frontend too.
+    // Let's decide: User said "login with username or email". Frontend login.tsx uses "username" state. api.ts sends "username".
+    // So if I keep "username" json tag, I don't break frontend API contract immediately. I will assume "username" field can contain email.
+	Password   string `json:"password"`
 }
 
 type AuthResponse struct {
@@ -60,6 +65,18 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+    // Validate email
+    req.Email = strings.TrimSpace(req.Email)
+    if req.Email == "" {
+        writeJSONError(w, "Email is required", http.StatusBadRequest)
+        return
+    }
+    // Simple email regex or check
+    if !strings.Contains(req.Email, "@") {
+         writeJSONError(w, "Invalid email format", http.StatusBadRequest)
+         return
+    }
+
 	// Validate password
 	if len(req.Password) < 6 {
 		writeJSONError(w, "Password must be at least 6 characters", http.StatusBadRequest)
@@ -77,6 +94,18 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, "Username already exists", http.StatusConflict)
 		return
 	}
+    
+    // Check if email already exists
+    existingEmail, err := db.GetUserByEmail(req.Email)
+    if err != nil {
+		log.Printf("[AUTH] Error checking existing email: %v", err)
+		writeJSONError(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+    if existingEmail != nil {
+        writeJSONError(w, "Email already exists", http.StatusConflict)
+		return
+    }
 
 	// Hash password
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -87,15 +116,44 @@ func HandleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create user
-	userID, err := db.CreateUser(req.Username, string(passwordHash))
+	userID, err := db.CreateUser(req.Username, string(passwordHash), req.Email, "")
 	if err != nil {
 		log.Printf("[AUTH] Error creating user: %v", err)
 		writeJSONError(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
 
-	// Generate JWT
-	token, err := utils.GenerateJWT(userID, req.Username)
+	// Generate session ID
+	sessionID, err := utils.GenerateSessionID()
+	if err != nil {
+		log.Printf("[AUTH] Error generating session ID: %v", err)
+		writeJSONError(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Extract device info and IP
+	deviceInfo := utils.ExtractDeviceInfo(r)
+	ipAddress := utils.ExtractIPAddress(r)
+
+	// Create session (stores in Redis + PostgreSQL)
+	expiration := time.Now().Add(720 * time.Hour) // 30 days
+	session := &models.UserSession{
+		UserID:     userID,
+		SessionID:  sessionID,
+		DeviceInfo: deviceInfo,
+		IPAddress:  ipAddress,
+		ExpiresAt:  expiration,
+		IsActive:   true,
+	}
+	err = utils.SetSession(session)
+	if err != nil {
+		log.Printf("[AUTH] Error creating session: %v", err)
+		writeJSONError(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate JWT with session ID
+	token, err := utils.GenerateJWT(userID, req.Username, sessionID)
 	if err != nil {
 		log.Printf("[AUTH] Error generating JWT: %v", err)
 		writeJSONError(w, "Internal server error", http.StatusInternalServerError)
@@ -134,27 +192,69 @@ func HandleLoginWithConnManager(w http.ResponseWriter, r *http.Request, connMana
 		return
 	}
 
-	log.Printf("[AUTH] Login attempt for username: %s", req.Username)
+	log.Printf("[AUTH] Login attempt for identifier: %s", req.Identifier)
 
-	if strings.TrimSpace(req.Username) == "" || strings.TrimSpace(req.Password) == "" {
-		writeJSONError(w, "Username and password are required", http.StatusBadRequest)
+	if strings.TrimSpace(req.Identifier) == "" || strings.TrimSpace(req.Password) == "" {
+		writeJSONError(w, "Username/Email and password are required", http.StatusBadRequest)
 		return
 	}
 
-	user, err := db.GetUserByUsername(req.Username)
+	user, err := db.GetUserByIdentifier(req.Identifier)
 	if err != nil {
-		writeJSONError(w, "Invalid username or password", http.StatusUnauthorized)
+		writeJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
+    
+    // Check if user found
+    if user == nil {
+        writeJSONError(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+    }
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		writeJSONError(w, "Invalid username or password", http.StatusUnauthorized)
+		writeJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	token, err := utils.GenerateJWT(user.ID, user.Username)
+	// Invalidate all existing sessions for single-device enforcement
+	err = utils.InvalidateAllUserSessions(user.ID)
 	if err != nil {
-		log.Printf("[AUTH] Login failed for user %s: JWT generation error - %v", req.Username, err)
+		log.Printf("[AUTH] Warning: Failed to invalidate old sessions: %v", err)
+	}
+
+	// Generate new session ID
+	sessionID, err := utils.GenerateSessionID()
+	if err != nil {
+		log.Printf("[AUTH] Login failed for user %s: Session ID generation error - %v", user.Username, err)
+		writeJSONError(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Extract device info and IP
+	deviceInfo := utils.ExtractDeviceInfo(r)
+	ipAddress := utils.ExtractIPAddress(r)
+
+	// Create session (stores in Redis + PostgreSQL)
+	expiration := time.Now().Add(720 * time.Hour) // 30 days
+	session := &models.UserSession{
+		UserID:     user.ID,
+		SessionID:  sessionID,
+		DeviceInfo: deviceInfo,
+		IPAddress:  ipAddress,
+		ExpiresAt:  expiration,
+		IsActive:   true,
+	}
+	err = utils.SetSession(session)
+	if err != nil {
+		log.Printf("[AUTH] Login failed for user %s: Session creation error - %v", user.Username, err)
+		writeJSONError(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate JWT with session ID
+	token, err := utils.GenerateJWT(user.ID, user.Username, sessionID)
+	if err != nil {
+		log.Printf("[AUTH] Login failed for user %s: JWT generation error - %v", user.Username, err)
 		writeJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -208,10 +308,14 @@ func HandleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate JWT
-	claims, err := utils.ValidateJWT(token)
+	// Validate JWT with session check
+	claims, err := utils.ValidateJWTWithSession(token)
 	if err != nil {
-		writeJSONError(w, "Invalid or expired token", http.StatusUnauthorized)
+		if err.Error() == "session invalidated" || err.Error() == "session expired" {
+			writeJSONError(w, "Session invalidated or expired", http.StatusUnauthorized)
+		} else {
+			writeJSONError(w, "Invalid or expired token", http.StatusUnauthorized)
+		}
 		return
 	}
 
