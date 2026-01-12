@@ -98,6 +98,14 @@ const LandingPage = () => {
         </button>
 
         <button
+          onClick={() => navigate("/history")}
+          className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition flex items-center justify-center gap-2"
+        >
+          <span>📜</span>
+          <span>Game History</span>
+        </button>
+
+        <button
           onClick={handleLogout}
           className="w-full px-4 py-2 bg-red-100 text-red-700 rounded hover:bg-red-200 transition"
         >

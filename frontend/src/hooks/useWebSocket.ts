@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { RefObject, useEffect, useRef, useState } from "react";
 import {
   ClientMessage,
   GameState,
@@ -14,6 +14,11 @@ interface UseWebSocketReturn {
   joinQueue: (difficulty?: string) => void;
   makeMove: (column: number) => void;
   reconnect: (gameID?: string) => void;
+  requestRematch: () => void;
+  respondToRematch: (accept: boolean) => void;
+  justReceivedGameStart: RefObject<boolean>;
+  showPostGameNotification: boolean;
+  postGameMessage: string;
 }
 
 const useWebSocket = (): UseWebSocketReturn => {
@@ -36,11 +41,28 @@ const useWebSocket = (): UseWebSocketReturn => {
     matchEnded: false,
     matchEndedAt: null,
     error: null,
+    rematchRequested: false,
+    rematchRequester: null,
+    rematchTimeout: null,
   });
+  
+  const [showPostGameNotification, setShowPostGameNotification] = useState(false);
+  const [postGameMessage, setPostGameMessage] = useState("");
 
   const ws = useRef<WebSocket | null>(null);
   const navigate = useNavigate();
   const { getToken, logout } = useAuth();
+  
+  // Use refs to avoid stale closures while keeping WebSocket stable
+  const navigateRef = useRef(navigate);
+  const logoutRef = useRef(logout);
+  const justReceivedGameStart = useRef(false);
+  
+  // Update refs on every render
+  useEffect(() => {
+    navigateRef.current = navigate;
+    logoutRef.current = logout;
+  });
 
   useEffect(() => {
     const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8080";
@@ -54,13 +76,6 @@ const useWebSocket = (): UseWebSocketReturn => {
       const message: ServerMessage = JSON.parse(event.data);
 
       switch (message.type) {
-        case "queue_joined":
-          setGameState((prevState: GameState) => ({
-            ...prevState,
-            inQueue: true,
-            queuedAt: Date.now(),
-          }));
-          break;
         case "game_start":
           if (message.gameId) {
             localStorage.setItem("gameID", message.gameId);
@@ -75,6 +90,16 @@ const useWebSocket = (): UseWebSocketReturn => {
             gameOver: false,
             inQueue: false,
           }));
+          // Set flag to prevent reconnect when navigating
+          justReceivedGameStart.current = true;
+          // Navigate to the new game route
+          if (message.gameId) {
+            navigateRef.current(`/game/${message.gameId}`);
+          }
+          // Reset flag after navigation
+          setTimeout(() => {
+            justReceivedGameStart.current = false;
+          }, 500);
           break;
         case "reconnect_success":
           if (message.gameId) {
@@ -101,7 +126,6 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_over":
-          localStorage.removeItem("gameID");
           setGameState((prevState: GameState) => ({
             ...prevState,
             gameOver: true,
@@ -131,10 +155,10 @@ const useWebSocket = (): UseWebSocketReturn => {
           localStorage.removeItem("gameID");
           
           // Logout to clear the HttpOnly cookie (don't await, fire and forget)
-          logout();
+          logoutRef.current();
           
           // Navigate and show alert
-          navigate("/login");
+          navigateRef.current("/login");
           alert(message.message || "You have been logged out");
           break;
         case "error":
@@ -169,6 +193,42 @@ const useWebSocket = (): UseWebSocketReturn => {
             reason: message.message || `Error: ${message.type}`,
           }));
           break;
+        case "rematch_request":
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            rematchRequested: true,
+            rematchRequester: message.rematchRequester ?? null,
+            rematchTimeout: message.rematchTimeout ?? null,
+          }));
+          break;
+        case "rematch_accepted":
+          // Brief confirmation message, then wait for game_start
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            rematchRequested: false,
+            rematchRequester: null,
+            rematchTimeout: null,
+          }));
+          break;
+        case "rematch_declined":
+        case "rematch_timeout":
+        case "rematch_cancelled":
+          // Clear rematch state and show notification
+          setGameState((prevState: GameState) => ({
+            ...prevState,
+            rematchRequested: false,
+            rematchRequester: null,
+            rematchTimeout: null,
+          }));
+          // Show post-game notification
+          const notificationMsg = message.type === "rematch_declined" 
+            ? "Rematch declined" 
+            : message.type === "rematch_timeout"
+            ? "Rematch request timed out"
+            : "Rematch cancelled";
+          setPostGameMessage(notificationMsg);
+          setShowPostGameNotification(true);
+          break;
         default:
           console.warn("Unhandled message type:", message.type);
       }
@@ -189,7 +249,7 @@ const useWebSocket = (): UseWebSocketReturn => {
         ws.current.close();
       }
     };
-  }, [navigate]);
+  }, []); // Empty dependencies - only create WebSocket once
 
   const sendMessage = (message: ClientMessage) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
@@ -207,7 +267,7 @@ const useWebSocket = (): UseWebSocketReturn => {
     
     if (!jwt) {
       console.error("No auth token found");
-      navigate("/login");
+      navigateRef.current("/login");
       return;
     }
     
@@ -216,6 +276,14 @@ const useWebSocket = (): UseWebSocketReturn => {
       jwt,
       difficulty: difficulty || ""
     });
+    
+    if (!difficulty) {
+      setGameState((prevState: GameState) => ({
+        ...prevState,
+        inQueue: true,
+        queuedAt: Date.now(),
+      }));
+    }
   };
 
   const makeMove = (column: number) => {
@@ -237,7 +305,7 @@ const useWebSocket = (): UseWebSocketReturn => {
         inQueue: false,
         reason: "Please log in to reconnect.",
       }));
-      navigate("/login");
+      navigateRef.current("/login");
       return;
     }
     
@@ -248,12 +316,39 @@ const useWebSocket = (): UseWebSocketReturn => {
     });
   };
 
+  const requestRematch = () => {
+    const jwt = getToken() || "";
+    if (!jwt) {
+      console.error("No auth token found");
+      return;
+    }
+    sendMessage({ type: "rematch_request", jwt });
+  };
+
+  const respondToRematch = (accept: boolean) => {
+    const jwt = getToken() || "";
+    if (!jwt) {
+      console.error("No auth token found");
+      return;
+    }
+    sendMessage({ 
+      type: "rematch_response", 
+      jwt,
+      rematchResponse: accept ? "accept" : "decline"
+    });
+  };
+
   return {
     connected,
     gameState,
     joinQueue,
     makeMove,
     reconnect,
+    requestRematch,
+    respondToRematch,
+    justReceivedGameStart,
+    showPostGameNotification,
+    postGameMessage,
   };
 };
 

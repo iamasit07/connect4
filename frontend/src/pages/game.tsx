@@ -3,16 +3,18 @@ import { useNavigate, useParams } from "react-router-dom";
 import Board from "../components/board";
 import DisconnectNotification from "../components/DisconnectNotification";
 import ErrorNotification from "../components/ErrorNotification";
+import RematchNotification from "../components/RematchNotification";
+import PostGameNotification from "../components/PostGameNotification";
 import useWebSocket from "../hooks/useWebSocket";
 
 const GamePage: React.FC = () => {
   const { gameID: urlGameID } = useParams<{ gameID: string }>();
-  const { connected, gameState, joinQueue, makeMove, reconnect } =
+  const { connected, gameState, joinQueue, makeMove, reconnect, requestRematch, respondToRematch, justReceivedGameStart, showPostGameNotification, postGameMessage } =
     useWebSocket();
   const navigate = useNavigate();
   const hasJoinedQueue = useRef(false);
   const [, forceUpdate] = React.useState(0);
-
+  
   // Extract difficulty from URL query parameter
   const searchParams = new URLSearchParams(window.location.search);
   const difficulty = searchParams.get("difficulty") || ""; // Empty for online matchmaking
@@ -23,9 +25,13 @@ const GamePage: React.FC = () => {
     }
   }, [gameState.gameId, urlGameID]);
 
+
+
   useEffect(() => {
     if (urlGameID && urlGameID !== "queue") {
-      if (connected && !hasJoinedQueue.current) {
+      // Only reconnect if we don't already have this game loaded
+      // AND we didn't just receive a game_start message (which already has the game state)
+      if (connected && !hasJoinedQueue.current && gameState.gameId !== urlGameID && !justReceivedGameStart.current) {
         hasJoinedQueue.current = true;
 
         setTimeout(() => {
@@ -61,6 +67,11 @@ const GamePage: React.FC = () => {
     navigate("/");
   }, [connected, navigate, joinQueue, reconnect, urlGameID, difficulty]);
 
+  // Reset hasJoinedQueue when URL changes (so we can reconnect to different games)
+  useEffect(() => {
+    hasJoinedQueue.current = false;
+  }, [urlGameID]);
+
   useEffect(() => {
     if (gameState.inQueue && gameState.queuedAt) {
       const interval = setInterval(() => {
@@ -89,6 +100,18 @@ const GamePage: React.FC = () => {
 
   const handlePlayAgain = () => {
     navigate("/");
+  };
+
+  const handleRematchRequest = () => {
+    requestRematch();
+  };
+
+  const handleRematchAccept = () => {
+    respondToRematch(true);
+  };
+
+  const handleRematchDecline = () => {
+    respondToRematch(false);
   };
 
   const getBackgroundColor = () => {
@@ -210,12 +233,20 @@ const GamePage: React.FC = () => {
       />
 
       {gameState.gameOver && (
-        <button
-          onClick={handlePlayAgain}
-          className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-        >
-          Back to Home
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleRematchRequest}
+            className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
+          >
+            Request Rematch
+          </button>
+          <button
+            onClick={handlePlayAgain}
+            className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+          >
+            Back to Home
+          </button>
+        </div>
       )}
 
       <DisconnectNotification
@@ -223,11 +254,24 @@ const GamePage: React.FC = () => {
         disconnectedAt={gameState.disconnectedAt}
       />
 
+      <RematchNotification
+        isRequested={gameState.rematchRequested}
+        requesterName={gameState.rematchRequester}
+        timeout={gameState.rematchTimeout}
+        onAccept={handleRematchAccept}
+        onDecline={handleRematchDecline}
+      />
+
       <ErrorNotification
         show={gameState.matchEnded}
         triggeredAt={gameState.matchEndedAt}
         title={gameState.reason ? "Error" : "Match Ended"}
         reason={gameState.reason ?? undefined}
+      />
+
+      <PostGameNotification
+        show={showPostGameNotification}
+        message={postGameMessage}
       />
 
       {gameState.error && (

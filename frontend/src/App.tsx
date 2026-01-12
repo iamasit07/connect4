@@ -6,6 +6,8 @@ import SignupPage from "./pages/signup";
 import GamePage from "./pages/game";
 import BotDifficulty from "./pages/BotDifficulty";
 import LeaderboardPage from "./pages/leaderboard";
+import GameHistory from "./pages/GameHistory";
+import GameReview from "./pages/GameReview";
 import PrivateRoute from "./components/PrivateRoute";
 import { AuthProvider } from "./contexts/AuthContext";
 
@@ -41,6 +43,14 @@ function App() {
             }
           />
           <Route
+            path="/game/review/:gameId"
+            element={
+              <PrivateRoute>
+                <GameReview />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/bot-difficulty"
             element={
               <PrivateRoute>
@@ -53,6 +63,14 @@ function App() {
             element={
               <PrivateRoute>
                 <LeaderboardPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <PrivateRoute>
+                <GameHistory />
               </PrivateRoute>
             }
           />
