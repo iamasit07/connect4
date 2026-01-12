@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -103,7 +104,7 @@ func UpdatePlayerStats(userID int64, won bool) error {
 }
 
 // SaveGame saves a finished game and updates player stats
-func SaveGame(gameID string, player1ID int64, player1Username string, player2ID *int64, player2Username string, winnerID *int64, winnerUsername string, reason string, totalMoves, durationSeconds int, createdAt, finishedAt time.Time) error {
+func SaveGame(gameID string, player1ID int64, player1Username string, player2ID *int64, player2Username string, winnerID *int64, winnerUsername string, reason string, totalMoves, durationSeconds int, createdAt, finishedAt time.Time, boardState [][]int) error {
 	tx, err := DB.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %v", err)
@@ -126,19 +127,26 @@ func SaveGame(gameID string, player1ID int64, player1Username string, player2ID 
 	}
 
 	// Insert or update game record (UPSERT to handle race conditions)
+	// Convert board state to JSON
+	boardJSON, err := json.Marshal(boardState)
+	if err != nil {
+		return fmt.Errorf("failed to marshal board state: %v", err)
+	}
+	
 	query := `
-	INSERT INTO game (game_id, player1_id, player1_username, player2_id, player2_username, winner_id, winner_username, reason, total_moves, duration_seconds, created_at, finished_at)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	INSERT INTO game (game_id, player1_id, player1_username, player2_id, player2_username, winner_id, winner_username, reason, total_moves, duration_seconds, created_at, finished_at, board_state)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	ON CONFLICT (game_id) DO UPDATE SET
 		winner_id = EXCLUDED.winner_id,
 		winner_username = EXCLUDED.winner_username,
 		reason = EXCLUDED.reason,
 		total_moves = EXCLUDED.total_moves,
 		duration_seconds = EXCLUDED.duration_seconds,
-		finished_at = EXCLUDED.finished_at;
+		finished_at = EXCLUDED.finished_at,
+		board_state = EXCLUDED.board_state;
 	`
 
-	_, err = tx.Exec(query, gameID, player1ID, player1Username, player2ID, player2Username, winnerID, winnerUsername, reason, totalMoves, durationSeconds, createdAt, finishedAt)
+	_, err = tx.Exec(query, gameID, player1ID, player1Username, player2ID, player2Username, winnerID, winnerUsername, reason, totalMoves, durationSeconds, createdAt, finishedAt, boardJSON)
 	if err != nil {
 		return fmt.Errorf("failed to upsert game record: %v", err)
 	}
@@ -275,3 +283,101 @@ func GetGameByID(gameID string) (*GameResult, error) {
 	return &result, nil
 }
 
+// GetUserGameHistory retrieves all games for a user (both as player1 and player2)
+func GetUserGameHistory(userID int64) ([]GameResult, error) {
+	query := `
+	SELECT game_id, player1_id, player1_username, player2_id, player2_username, 
+	       winner_id, winner_username, reason, total_moves, duration_seconds, 
+	       created_at, finished_at
+	FROM game 
+	WHERE player1_id = $1 OR player2_id = $1
+	ORDER BY finished_at DESC;
+	`
+	
+	rows, err := DB.Query(query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query game history: %v", err)
+	}
+	defer rows.Close()
+	
+	var games []GameResult
+	for rows.Next() {
+		var result GameResult
+		var player2ID, winnerID sql.NullInt64
+		var winnerUsername sql.NullString
+		
+		err := rows.Scan(
+			&result.GameID,
+			&result.Player1ID,
+			&result.Player1Username,
+			&player2ID,
+			&result.Player2Username,
+			&winnerID,
+			&winnerUsername,
+			&result.Reason,
+			&result.TotalMoves,
+			&result.DurationSeconds,
+			&result.CreatedAt,
+			&result.FinishedAt,
+		)
+		
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan game row: %v", err)
+		}
+		
+		if player2ID.Valid {
+			id := player2ID.Int64
+			result.Player2ID = &id
+		}
+		if winnerID.Valid {
+			id := winnerID.Int64
+			result.WinnerID = &id
+		}
+		if winnerUsername.Valid {
+			result.WinnerUsername = winnerUsername.String
+		}
+		
+		games = append(games, result)
+	}
+	
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating game rows: %v", err)
+	}
+	
+	return games, nil
+}
+
+// GetGameBoard retrieves the board state for a game from the database
+func GetGameBoard(gameID string) ([][]int, error) {
+	query := `SELECT board_state FROM game WHERE game_id = $1;`
+	
+	var boardJSON []byte
+	err := DB.QueryRow(query, gameID).Scan(&boardJSON)
+	if err == sql.ErrNoRows {
+		// Return empty board if not found
+		board := make([][]int, 6)
+		for i := range board {
+			board[i] = make([]int, 7)
+		}
+		return board, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get board state: %v", err)
+	}
+	
+	// If no board_state stored, return empty board
+	if boardJSON == nil {
+		board := make([][]int, 6)
+		for i := range board {
+			board[i] = make([]int, 7)
+		}
+		return board, nil
+	}
+	
+	var board [][]int
+	if err := json.Unmarshal(boardJSON, &board); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal board state: %v", err)
+	}
+	
+	return board, nil
+}
