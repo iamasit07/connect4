@@ -13,7 +13,6 @@ const GamePage: React.FC = () => {
     useWebSocket();
   const navigate = useNavigate();
   const hasJoinedQueue = useRef(false);
-  const [, forceUpdate] = React.useState(0);
   
   // Extract difficulty from URL query parameter
   const searchParams = new URLSearchParams(window.location.search);
@@ -41,10 +40,20 @@ const GamePage: React.FC = () => {
       return;
     }
     if (urlGameID === "queue") {
+      // Check if user has an active game first
+      const storedGameID = sessionStorage.getItem("gameID");
+      
+      if (storedGameID && storedGameID !== "queue") {
+        // User has an active game, redirect them back to it instead of joining queue
+        console.log("Redirecting to active game instead of queue:", storedGameID);
+        navigate(`/game/${storedGameID}`, { replace: true });
+        return;
+      }
+      
       if (connected && !hasJoinedQueue.current) {
         hasJoinedQueue.current = true;
 
-        localStorage.removeItem("gameID");
+        sessionStorage.removeItem("gameID");
 
         setTimeout(() => {
           joinQueue(difficulty);
@@ -72,33 +81,13 @@ const GamePage: React.FC = () => {
     hasJoinedQueue.current = false;
   }, [urlGameID]);
 
-  useEffect(() => {
-    if (gameState.inQueue && gameState.queuedAt) {
-      const interval = setInterval(() => {
-        forceUpdate((n) => n + 1);
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [gameState.inQueue, gameState.queuedAt]);
-
-  const queueCountdown =
-    gameState.inQueue && gameState.queuedAt
-      ? Math.max(0, 30 - Math.floor((Date.now() - gameState.queuedAt) / 1000))
-      : null;
-
-  // Redirect to bot difficulty page when matchmaking times out (only for online matchmaking)
-  useEffect(() => {
-    if (queueCountdown === 0 && gameState.inQueue && !difficulty) {
-      // Timeout for online matchmaking - redirect to bot difficulty selection
-      navigate("/bot-difficulty");
-    }
-  }, [queueCountdown, gameState.inQueue, difficulty, navigate]);
 
   const handleColumnClick = (col: number) => {
     makeMove(col);
   };
 
   const handlePlayAgain = () => {
+    sessionStorage.removeItem("gameID"); // Clear old game before navigating
     navigate("/");
   };
 
@@ -130,22 +119,27 @@ const GamePage: React.FC = () => {
   }
 
   if (gameState.inQueue) {
+    const handlePlayWithBot = () => {
+      // Remove from queue and navigate to bot selection
+      navigate("/bot-difficulty");
+    };
+
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center">
-          <p className="text-lg text-gray-800">Finding opponent...</p>
-          <p className="text-sm text-gray-500 mt-2">
-            {queueCountdown !== null ? (
-              <span>
-                Bot joins in{" "}
-                <span className="font-bold text-blue-600">
-                  {queueCountdown} second{queueCountdown !== 1 ? "s" : ""}
-                </span>
-              </span>
-            ) : (
-              "Waiting..."
-            )}
-          </p>
+        <div className="text-center space-y-6">
+          <div>
+            <p className="text-lg text-gray-800 font-semibold">Finding opponent...</p>
+            <p className="text-sm text-gray-500 mt-2">
+              Waiting for a human player to join
+            </p>
+          </div>
+          
+          <button
+            onClick={handlePlayWithBot}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+          >
+            Play with Bot Instead
+          </button>
         </div>
       </div>
     );
@@ -235,7 +229,7 @@ const GamePage: React.FC = () => {
       
       {gameState.gameOver && (
         <div className="flex gap-3">
-          {!showPostGameNotification && (
+          {!showPostGameNotification && gameState.allowRematch && (
             <button
               onClick={handleRematchRequest}
               className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"

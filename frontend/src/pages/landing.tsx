@@ -8,7 +8,7 @@ const LandingPage = () => {
   const { user, logout } = useAuth();
 
   const handlePlayOnline = () => {
-    localStorage.removeItem("gameID");
+    sessionStorage.removeItem("gameID");
     navigate("/game/queue");
   };
 

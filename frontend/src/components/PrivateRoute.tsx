@@ -7,11 +7,13 @@ interface PrivateRouteProps {
 }
   
 const PrivateRoute = ({ children }: PrivateRouteProps) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, initialLoading } = useAuth();
   const [isChecking, setIsChecking] = useState(true);
   const [isAuthed, setIsAuthed] = useState(false);
 
   useEffect(() => {
+    if (initialLoading) return; // Wait for initial auth check to complete
+
     // Check authentication status
     const checkAuth = () => {
       const authed = isAuthenticated();
@@ -20,11 +22,11 @@ const PrivateRoute = ({ children }: PrivateRouteProps) => {
     };
     
     checkAuth();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, initialLoading]);
 
   // Show nothing while checking (prevents flash of redirect)
-  if (isChecking) {
-    return null;
+  if (isChecking || initialLoading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
 
   if (!isAuthed) {

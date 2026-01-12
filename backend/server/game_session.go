@@ -183,11 +183,13 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 
 		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
+		allowRematch := true
 		gameOverMsg := models.ServerMessage{
-			Type:   "game_over",
-			Winner: winnerUsername,
-			Reason: gs.Reason,
-			Board:  gs.Game.Board,
+			Type:         "game_over",
+			Winner:       winnerUsername,
+			Reason:       gs.Reason,
+			Board:        gs.Game.Board,
+			AllowRematch: &allowRematch,
 		}
 
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
@@ -211,11 +213,13 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 
 		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
+		allowRematch := true
 		gameOverMsg := models.ServerMessage{
-			Type:   "game_over",
-			Winner: "draw",
-			Reason: "draw",
-			Board:  gs.Game.Board,
+			Type:         "game_over",
+			Winner:       "draw",
+			Reason:       "draw",
+			Board:        gs.Game.Board,
+			AllowRematch: &allowRematch,
 		}
 
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
@@ -271,11 +275,13 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 
 		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
+		allowRematch := true // Bot games allow infinite rematches
 		gameOverMsg := models.ServerMessage{
-			Type:   "game_over",
-			Winner: models.BotUsername,
-			Reason: gs.Reason,
-			Board:  gs.Game.Board,
+			Type:         "game_over",
+			Winner:       models.BotUsername,
+			Reason:       gs.Reason,
+			Board:        gs.Game.Board,
+			AllowRematch: &allowRematch,
 		}
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
 
@@ -295,11 +301,13 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 
 		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
+		allowRematch := true // Bot games allow infinite rematches
 		gameOverMsg := models.ServerMessage{
-			Type:   "game_over",
-			Winner: "draw",
-			Reason: "draw",
-			Board:  gs.Game.Board,
+			Type:         "game_over",
+			Winner:       "draw",
+			Reason:       "draw",
+			Board:        gs.Game.Board,
+			AllowRematch: &allowRematch,
 		}
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
 
@@ -477,10 +485,12 @@ func (gs *GameSession) HandleReconnectTimeout(userID int64, conn ConnectionManag
 		log.Printf("[GAME] Error saving game: %v", err)
 	}
 
+	allowRematch := true
 	gameOverMsg := models.ServerMessage{
-		Type:   "game_over",
-		Winner: opponentUsername,
-		Reason: "timeout",
+		Type:         "game_over",
+		Winner:       opponentUsername,
+		Reason:       "timeout",
+		AllowRematch: &allowRematch,
 	}
 
 	conn.SendMessage(userID, gameOverMsg)
@@ -518,10 +528,12 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 
 	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
+	allowRematch := false // Abandoned games don't allow rematch
 	gameOverMsg := models.ServerMessage{
-		Type:   "game_over",
-		Winner: opponentUsername,
-		Reason: "abandoned",
+		Type:         "game_over",
+		Winner:       opponentUsername,
+		Reason:       "abandoned",
+		AllowRematch: &allowRematch,
 	}
 
 	if !gs.IsBot() && opponentID != nil {
@@ -608,15 +620,18 @@ func (gs *GameSession) HandleRematchRequest(userID int64, conn ConnectionManager
 
 		log.Printf("[REMATCH] Request timeout for game %s", gs.GameID)
 		
+		allowRematch := false // Timer ended, can't rematch
 		// Notify both players that request timed out
 		conn.SendMessage(userID, models.ServerMessage{
-			Type:    "rematch_timeout",
-			Message: "Rematch request timed out",
+			Type:         "rematch_timeout",
+			Message:      "Rematch request timed out",
+			AllowRematch: &allowRematch,
 		})
 		
 		conn.SendMessage(*opponentID, models.ServerMessage{
-			Type:    "rematch_timeout",
-			Message: "Rematch request timed out",
+			Type:         "rematch_timeout",
+			Message:      "Rematch request timed out",
+			AllowRematch: &allowRematch,
 		})
 
 		// Clean up
@@ -681,14 +696,17 @@ func (gs *GameSession) HandleRematchResponse(userID int64, response string, conn
 	} else {
 		log.Printf("[REMATCH] %s (ID: %d) declined rematch in game %s", responderUsername, userID, gs.GameID)
 		
+		allowRematch := false // Declined, can't rematch
 		// Notify both players
 		conn.SendMessage(requesterID, models.ServerMessage{
-			Type:    "rematch_declined",
-			Message: "Rematch declined",
+			Type:         "rematch_declined",
+			Message:      "Rematch declined",
+			AllowRematch: &allowRematch,
 		})
 		conn.SendMessage(userID, models.ServerMessage{
-			Type:    "rematch_declined",
-			Message: "Rematch declined",
+			Type:         "rematch_declined",
+			Message:      "Rematch declined",
+			AllowRematch: &allowRematch,
 		})
 
 		// Clean up connections

@@ -19,6 +19,7 @@ export interface GameState {
   rematchRequested: boolean;          // Whether a rematch has been requested
   rematchRequester: string | null;    // Username of player who requested rematch
   rematchTimeout: number | null;      // Countdown for accepting rematch (seconds)
+  allowRematch: boolean;              // Whether rematch button should be shown
 }
 
 export interface ServerMessage {
@@ -37,6 +38,7 @@ export interface ServerMessage {
   message?: string;
   rematchRequester?: string;  // Username who requested rematch
   rematchTimeout?: number;     // Seconds remaining to respond
+  allowRematch?: boolean;      // Whether rematch button should be shown
 }
 
 export interface ClientMessage {

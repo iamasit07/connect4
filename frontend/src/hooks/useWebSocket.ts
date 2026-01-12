@@ -44,6 +44,7 @@ const useWebSocket = (): UseWebSocketReturn => {
     rematchRequested: false,
     rematchRequester: null,
     rematchTimeout: null,
+    allowRematch: true, // Default true, backend will override
   });
   
   const [showPostGameNotification, setShowPostGameNotification] = useState(false);
@@ -78,7 +79,7 @@ const useWebSocket = (): UseWebSocketReturn => {
       switch (message.type) {
         case "game_start":
           if (message.gameId) {
-            localStorage.setItem("gameID", message.gameId);
+            sessionStorage.setItem("gameID", message.gameId);
           }
           setGameState((prevState: GameState) => ({
             ...prevState,
@@ -103,7 +104,7 @@ const useWebSocket = (): UseWebSocketReturn => {
           break;
         case "reconnect_success":
           if (message.gameId) {
-            localStorage.setItem("gameID", message.gameId);
+            sessionStorage.setItem("gameID", message.gameId);
           }
           setGameState((prevState: GameState) => ({
             ...prevState,
@@ -126,6 +127,7 @@ const useWebSocket = (): UseWebSocketReturn => {
           }));
           break;
         case "game_over":
+          sessionStorage.removeItem("gameID"); // Clear finished game
           setGameState((prevState: GameState) => ({
             ...prevState,
             gameOver: true,
@@ -134,6 +136,7 @@ const useWebSocket = (): UseWebSocketReturn => {
             board: message.board ?? prevState.board,
             opponentDisconnected: false,
             disconnectedAt: null,
+            allowRematch: message.allowRematch ?? true, // Use backend value
           }));
           break;
         case "opponent_disconnected":
@@ -152,7 +155,7 @@ const useWebSocket = (): UseWebSocketReturn => {
           break;
         case "force_disconnect":
           // Clear gameID from localStorage
-          localStorage.removeItem("gameID");
+          sessionStorage.removeItem("gameID");
           
           // Logout to clear the HttpOnly cookie (don't await, fire and forget)
           logoutRef.current();
@@ -160,6 +163,20 @@ const useWebSocket = (): UseWebSocketReturn => {
           // Navigate and show alert
           navigateRef.current("/login");
           alert(message.message || "You have been logged out");
+          break;
+        case "session_invalidated":
+          // Session was invalidated (logged in from another device)
+          sessionStorage.removeItem("gameID");
+          logoutRef.current();
+          navigateRef.current("/login");
+          alert(message.message || "Your session has been invalidated. Please log in again.");
+          break;
+        case "session_expired":
+          // Session expired (30 days passed)
+          sessionStorage.removeItem("gameID");
+          logoutRef.current();
+          navigateRef.current("/login");
+          alert("Your session has expired. Please log in again.");
           break;
         case "error":
         case "queue_error":
@@ -182,7 +199,7 @@ const useWebSocket = (): UseWebSocketReturn => {
         case "not_in_game":
         case "game_finished":
         case "game_not_found":
-          localStorage.removeItem("gameID");
+          sessionStorage.removeItem("gameID");
           
           setGameState((prevState: GameState) => ({
             ...prevState,
@@ -228,6 +245,12 @@ const useWebSocket = (): UseWebSocketReturn => {
             : "Rematch cancelled";
           setPostGameMessage(notificationMsg);
           setShowPostGameNotification(true);
+          
+          // Update allowRematch based on backend
+          setGameState((prevState:  GameState) => ({
+            ...prevState,
+            allowRematch: message.allowRematch ?? false,
+          }));
           break;
         default:
           console.warn("Unhandled message type:", message.type);

@@ -36,10 +36,18 @@ func HandleConnection(conn *websocket.Conn, connManager *ConnectionManager, matc
 			continue
 		}
 
-		claims, err := utils.ValidateJWT(message.JWT)
+		claims, err := utils.ValidateJWTWithSession(message.JWT)
 		if err != nil {
-			SendErrorMessage(conn, "invalid_token", "Invalid or expired JWT token")
-			log.Printf("[WS] JWT validation failed: %v", err)
+			if err.Error() == "session invalidated" {
+				SendErrorMessage(conn, "session_invalidated", "Your session has been invalidated. Please log in again.")
+				log.Printf("[WS] Session invalidated for JWT: %v", err)
+			} else if err.Error() == "session expired" {
+				SendErrorMessage(conn, "session_expired", "Your session has expired. Please log in again.")
+				log.Printf("[WS] Session expired: %v", err)
+			} else {
+				SendErrorMessage(conn, "invalid_token", "Invalid or expired JWT token")
+				log.Printf("[WS] JWT validation failed: %v", err)
+			}
 			continue
 		}
 
