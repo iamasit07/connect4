@@ -3,6 +3,7 @@ import "./App.css";
 import LandingPage from "./pages/landing";
 import LoginPage from "./pages/login";
 import SignupPage from "./pages/signup";
+import CompleteSignupPage from "./pages/complete_signup";
 import GamePage from "./pages/game";
 import BotDifficulty from "./pages/BotDifficulty";
 import LeaderboardPage from "./pages/leaderboard";
@@ -18,6 +19,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/complete-signup" element={<CompleteSignupPage />} />
           <Route
             path="/"
             element={
