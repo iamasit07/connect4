@@ -71,6 +71,10 @@ const useWebSocket = (): UseWebSocketReturn => {
 
     ws.current.onopen = () => {
       setConnected(true);
+      const token = getToken();
+      if (token && ws.current) {
+        ws.current.send(JSON.stringify({ type: "init", jwt: token }));
+      }
     };
 
     ws.current.onmessage = (event: MessageEvent) => {
@@ -269,10 +273,15 @@ const useWebSocket = (): UseWebSocketReturn => {
 
     return () => {
       if (ws.current) {
+        // Prevent stale callbacks from firing if the component unmounts or re-runs
+        ws.current.onclose = null;
+        ws.current.onerror = null;
+        ws.current.onmessage = null;
+        ws.current.onopen = null;
         ws.current.close();
       }
     };
-  }, []); // Empty dependencies - only create WebSocket once
+  }, [getToken]); // Dependency on getToken to ensure we have it for init
 
   const sendMessage = (message: ClientMessage) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
