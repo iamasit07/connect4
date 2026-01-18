@@ -57,10 +57,10 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := h.UserRepo.GetUserByEmail(userInfo.Email)
-	
+
 	if user != nil {
 		// --- CASE A: EXISTING USER (LOGIN) ---
-		
+
 		// Auto-link Google ID if missing (The logic you liked)
 		if !user.GoogleID.Valid {
 			if err := h.UserRepo.UpdateUserGoogleID(userInfo.Email, userInfo.ID); err != nil {
@@ -68,7 +68,8 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Security: Invalidate old sessions (The logic you missed)
+		// Security: Invalidate old sessions
+		log.Printf("[OAUTH] Deactivating all sessions for user %d (%s)", user.ID, user.Username)
 		h.SessionRepo.DeactivateAllUserSessions(user.ID)
 		if h.ConnManager != nil {
 			h.ConnManager.DisconnectUser(user.ID, "Logged in from another device via Google")
@@ -80,11 +81,14 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		ipAddress := useragent.ExtractIPAddress(r)
 		expiresAt := time.Now().Add(30 * 24 * time.Hour)
 
+		log.Printf("[OAUTH] Creating new session for user %d: sessionID=%s", user.ID, sessionID)
 		err = h.SessionRepo.CreateSession(user.ID, sessionID, deviceInfo, ipAddress, expiresAt)
 		if err != nil {
+			log.Printf("[OAUTH] Failed to create session: %v", err)
 			http.Redirect(w, r, config.AppConfig.FrontendURL+"/login?error=server_error", http.StatusTemporaryRedirect)
 			return
 		}
+		log.Printf("[OAUTH] Session created successfully for user %d", user.ID)
 
 		// Generate Login JWT
 		jwtToken, err := auth.GenerateJWT(user.ID, user.Username, sessionID)
@@ -93,13 +97,13 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Set cookie and redirect to dashboard
+		// Set cookie and redirect to home page
 		httputil.SetAuthCookie(w, jwtToken)
-		http.Redirect(w, r, config.AppConfig.FrontendURL+"/dashboard", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, config.AppConfig.FrontendURL+"/", http.StatusTemporaryRedirect)
 
 	} else {
 		// --- CASE B: NEW USER (SETUP FLOW) ---
-		
+
 		// Do NOT create user yet. Generate a Setup Token instead.
 		setupToken, err := auth.GenerateSetupToken(userInfo.Email, userInfo.ID)
 		if err != nil {
@@ -109,12 +113,12 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, config.AppConfig.FrontendURL+"/login?error=setup_failed", http.StatusTemporaryRedirect)
 			return
 		}
-		
-		redirectURL := fmt.Sprintf("%s/complete-signup?token=%s&email=%s&name=%s", 
-			config.AppConfig.FrontendURL, 
+
+		redirectURL := fmt.Sprintf("%s/complete-signup?token=%s&email=%s&name=%s",
+			config.AppConfig.FrontendURL,
 			setupToken,
 			userInfo.Email, userInfo.Name)
-		
+
 		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 	}
 }

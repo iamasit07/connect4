@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -17,9 +18,9 @@ type Disconnector interface {
 }
 
 type AuthHandler struct {
-	UserRepo      *postgres.UserRepo
-	SessionRepo   *postgres.SessionRepo
-	ConnManager   Disconnector
+	UserRepo    *postgres.UserRepo
+	SessionRepo *postgres.SessionRepo
+	ConnManager Disconnector
 }
 
 func NewAuthHandler(userRepo *postgres.UserRepo, sessionRepo *postgres.SessionRepo, cm Disconnector) *AuthHandler {
@@ -190,9 +191,20 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get the token from the request to return it to the client
+	token, err := httputil.GetTokenFromRequest(r)
+	if err != nil {
+		log.Printf("[AUTH] /me: Failed to get token for user %d: %v", userID, err)
+		http.Error(w, "Token not found", http.StatusUnauthorized)
+		return
+	}
+
+	log.Printf("[AUTH] /me: Returning token for user %d, token length: %d", userID, len(token))
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":           user.ID,
+		"user_id":      user.ID,
 		"username":     user.Username,
+		"token":        token,
 		"games_played": user.GamesPlayed,
 		"games_won":    user.GamesWon,
 	})
@@ -214,9 +226,7 @@ func (h *AuthHandler) GetSessionHistory(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-
-	// 2. Fetch history from the already injected SessionRepo
-	// The repo method GetUserSessionHistory was already implemented in Phase 2
+	// 2. Fetch Sessions
 	sessions, err := h.SessionRepo.GetUserSessionHistory(userID, 10)
 	if err != nil {
 		http.Error(w, "Failed to fetch session history", http.StatusInternalServerError)

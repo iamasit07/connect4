@@ -56,7 +56,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleConnection(conn *websocket.Conn) {
 	// Set read deadline to detect stale connections
 	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	
+
 	// Keep-alive pinger
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
@@ -106,9 +106,9 @@ func (h *Handler) handleConnection(conn *websocket.Conn) {
 		sessionID = claims.SessionID // Store session ID for subsequent checks
 
 		log.Printf("[WS] Connection initialized for user: %s (ID: %d)", username, userID)
-		
+
 		h.ConnManager.AddConnection(userID, conn, username)
-		
+
 		// Check for existing active game to reconnect
 		activeGame, exists := h.SessionManager.GetSessionByUserID(userID)
 		if exists {
@@ -125,13 +125,13 @@ func (h *Handler) handleConnection(conn *websocket.Conn) {
 	defer func() {
 		log.Printf("[WS] Connection closed for user %s", username)
 		h.Matchmaking.RemovePlayer(userID)
-		
+
 		// Notify game session if active
 		gameSession, exists := h.SessionManager.GetSessionByUserID(userID)
 		if exists {
 			gameSession.HandleDisconnect(userID, h.ConnManager, h.SessionManager)
 		}
-		
+
 		h.ConnManager.RemoveConnectionIfMatching(userID, conn)
 	}()
 
@@ -152,27 +152,54 @@ func (h *Handler) handleConnection(conn *websocket.Conn) {
 		}
 
 		// --- STRICT PER-MESSAGE SESSION VALIDATION ---
-		// If the client sends a new JWT (e.g. refresh), validate it fully.
-		// If not, validate the existing Session ID against the DB to ensure it hasn't been revoked.
+		// Security: Ensure only the currently active session can send messages.
+		// If a new device logs in, old connections will be disconnected on next message.
 		if msg.JWT != "" {
 			claims, err := h.AuthService.ValidateToken(msg.JWT)
 			if err != nil {
+				log.Printf("[WS] Invalid token for user %d: %v", userID, err)
 				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session invalidated"})
 				return // Break loop and disconnect
 			}
 			// Update context if user somehow changed (unlikely but safe)
 			if claims.UserID != userID {
+				log.Printf("[WS] User mismatch: expected %d, got %d", userID, claims.UserID)
 				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "User mismatch"})
 				return
 			}
+			sessionID = claims.SessionID
 		} else {
-			// Fast Check: Verify the session is still active in DB
-			// This catches "Force Logout" or "Ban" events immediately
+			// Verify the session is still the active one in DB
+			// This catches if user logged in from another device
 			sess, err := h.AuthService.GetSession(sessionID)
-			if err != nil || sess == nil || !sess.IsActive {
-				log.Printf("[WS] Session %s invalidated during connection for user %d", sessionID, userID)
+			if err != nil {
+				log.Printf("[WS] Session lookup error for sessionID=%s, userID=%d: %v", sessionID, userID, err)
+				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session lookup failed"})
+				return
+			}
+			if sess == nil {
+				log.Printf("[WS] Session not found: sessionID=%s, userID=%d", sessionID, userID)
+				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session not found"})
+				return
+			}
+			if !sess.IsActive {
+				log.Printf("[WS] Session inactive: sessionID=%s, userID=%d, IsActive=%v", sessionID, userID, sess.IsActive)
 				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session expired or logged out"})
-				return // Break loop and disconnect
+				return
+			}
+			// Additional check: Verify this session is still the user's active session
+			activeSession, err := h.AuthService.GetActiveSession(userID)
+			if err != nil {
+				log.Printf("[WS] Active session lookup error for userID=%d: %v", userID, err)
+			} else if activeSession == nil {
+				log.Printf("[WS] No active session found for userID=%d", userID)
+				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "No active session"})
+				return
+			} else if activeSession.SessionID != sessionID {
+				log.Printf("[WS] Session mismatch: current=%s, active=%s, userID=%d - User logged in from another device",
+					sessionID, activeSession.SessionID, userID)
+				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Logged in from another device"})
+				return
 			}
 		}
 		// ---------------------------------------------
@@ -188,7 +215,7 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 		difficulty := msg.Difficulty
 		// Default to medium if not specified
 		if difficulty == "" {
-			difficulty = "medium" 
+			difficulty = "medium"
 		}
 
 		if h.SessionManager.HasActiveGame(userID) {
@@ -214,7 +241,7 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Game not found"})
 			return
 		}
-		
+
 		err := gameSession.HandleMove(userID, msg.Column, h.ConnManager)
 		if err != nil {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: err.Error()})

@@ -113,6 +113,11 @@ func (s *AuthService) GetSession(sessionID string) (*domain.UserSession, error) 
 	return session, nil
 }
 
+// GetActiveSession retrieves the currently active session for a user
+func (s *AuthService) GetActiveSession(userID int64) (*domain.UserSession, error) {
+	return s.repo.GetActiveSessionByUserID(userID)
+}
+
 // getSessionFromCache retrieves session from cache
 func (s *AuthService) getSessionFromCache(sessionID string) (*domain.UserSession, error) {
 	ctx := context.Background()
