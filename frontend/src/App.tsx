@@ -1,85 +1,116 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-import "./App.css";
-import LandingPage from "./pages/landing";
-import LoginPage from "./pages/login";
-import SignupPage from "./pages/signup";
-import CompleteSignupPage from "./pages/complete_signup";
-import GamePage from "./pages/game";
-import BotDifficulty from "./pages/BotDifficulty";
-import LeaderboardPage from "./pages/leaderboard";
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AppLayout } from "@/components/layout/AppLayout";
+import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
+import { useAuthInitializer } from "@/features/auth/hooks/useAuthInitializer";
+import LandingPage from "./pages/LandingPage";
+import LoginPage from "./features/auth/pages/LoginPage";
+import SignupPage from "./features/auth/pages/SignupPage";
+import AuthCallback from "./features/auth/pages/AuthCallback";
+import CompleteSignupPage from "./features/auth/pages/CompleteSignupPage";
+import Dashboard from "./pages/Dashboard";
+import PlayGame from "./features/game/routes/PlayGame";
+import QueuePage from "./features/game/routes/QueuePage";
+import BotLoadingPage from "./features/game/routes/BotLoadingPage";
+import GamePage from "./features/game/routes/GamePage";
 import GameHistory from "./pages/GameHistory";
-import GameReview from "./pages/GameReview";
-import PrivateRoute from "./components/PrivateRoute";
-import { AuthProvider } from "./contexts/AuthContext";
+import Leaderboard from "./pages/Leaderboard";
+import Profile from "./pages/Profile";
+import NotFound from "./pages/NotFound";
+import { queryClient } from "@/lib/react-query";
+import { useUIStore } from "@/stores/useUIStore";
+import { useEffect } from "react";
 
-function App() {
+const ThemeInitializer = () => {
+  const { theme } = useUIStore();
+  
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('light', 'dark');
+    
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.add(theme);
+    }
+  }, [theme]);
+  
+  return null;
+};
+
+const AppContent = () => {
+  useAuthInitializer();
+  
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/complete-signup" element={<CompleteSignupPage />} />
-          <Route
-            path="/"
-            element={
-              <PrivateRoute>
-                <LandingPage />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/game"
-            element={
-              <PrivateRoute>
-                <GamePage />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/game/:gameID"
-            element={
-              <PrivateRoute>
-                <GamePage />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/game/review/:gameId"
-            element={
-              <PrivateRoute>
-                <GameReview />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/bot-difficulty"
-            element={
-              <PrivateRoute>
-                <BotDifficulty />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/leaderboard"
-            element={
-              <PrivateRoute>
-                <LeaderboardPage />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/history"
-            element={
-              <PrivateRoute>
-                <GameHistory />
-              </PrivateRoute>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <>
+      <ThemeInitializer />
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/complete-signup" element={<CompleteSignupPage />} />
+      
+      {/* App routes with layout */}
+      <Route element={<AppLayout />}>
+        <Route path="/play" element={<PlayGame />} />
+        <Route path="/play/queue" element={<QueuePage />} />
+        <Route path="/play/bot" element={<BotLoadingPage />} />
+        <Route path="/game/:gameId" element={<GamePage />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/history"
+          element={
+            <ProtectedRoute>
+              <GameHistory />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/leaderboard"
+          element={
+            <ProtectedRoute>
+              <Leaderboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+      </Route>
+      
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+    </>
   );
-}
+};
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
 export default App;
