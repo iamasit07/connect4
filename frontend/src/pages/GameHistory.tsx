@@ -1,218 +1,161 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { format, isToday, isYesterday, parseISO } from 'date-fns';
+import { History, Trophy, X, Minus, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useGameHistory } from '@/hooks/queries/useGameQueries';
+import type { GameHistoryItem } from '@/features/game/types';
 
-interface GameHistoryItem {
-  game_id: string;
-  player1: {
-    id?: number;
-    username: string;
-  };
-  player2: {
-    id?: number;
-    username: string;
-  };
-  result: "won" | "lost" | "draw";
-  reason: string;
-  total_moves: number;
-  duration_seconds: number;
-  created_at: string;
-  finished_at: string;
-}
+const GameHistory = () => {
+  const { data, isLoading, error } = useGameHistory();
+  const games = data ?? [];
 
-interface GroupedGames {
-  [key: string]: GameHistoryItem[];
-}
-
-const GameHistory: React.FC = () => {
-  const [games, setGames] = useState<GameHistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    fetchGameHistory();
-  }, []);
-
-  const fetchGameHistory = async () => {
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL || "http://localhost:8080"}/api/games/history`,
-        {
-          credentials: "include",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch game history");
-      }
-
-      const data = await response.json();
-      setGames(data.games || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const groupGamesByDate = (games: GameHistoryItem[]): GroupedGames => {
-    const grouped: GroupedGames = {};
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
+  const groupGamesByDate = (games: GameHistoryItem[]) => {
+    const groups: Record<string, GameHistoryItem[]> = {};
+    
     games.forEach((game) => {
-      const gameDate = new Date(game.finished_at);
-      gameDate.setHours(0, 0, 0, 0);
-
-      let dateKey: string;
-      if (gameDate.getTime() === today.getTime()) {
-        dateKey = "Today";
-      } else if (gameDate.getTime() === yesterday.getTime()) {
-        dateKey = "Yesterday";
+      if (!game.createdAt) return;
+      const date = parseISO(game.createdAt);
+      let key: string;
+      
+      if (isToday(date)) {
+        key = 'Today';
+      } else if (isYesterday(date)) {
+        key = 'Yesterday';
       } else {
-        dateKey = gameDate.toLocaleDateString("en-US", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        });
+        key = format(date, 'MMMM d, yyyy');
       }
-
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = [];
+      
+      if (!groups[key]) {
+        groups[key] = [];
       }
-      grouped[dateKey].push(game);
+      groups[key].push(game);
     });
-
-    return grouped;
+    
+    return groups;
   };
 
-  const getResultBadgeClass = (result: string) => {
+  const getResultIcon = (result: string) => {
     switch (result) {
-      case "won":
-        return "bg-green-100 text-green-800";
-      case "lost":
-        return "bg-red-100 text-red-800";
-      case "draw":
-        return "bg-gray-100 text-gray-800";
+      case 'win':
+        return <Trophy className="h-4 w-4 text-yellow-500" />;
+      case 'loss':
+        return <X className="h-4 w-4 text-destructive" />;
       default:
-        return "bg-gray-100 text-gray-800";
+        return <Minus className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
-  const handleViewBoard = (gameId: string) => {
-    navigate(`/game/review/${gameId}`);
+  const getResultBadge = (result: string) => {
+    const variants: Record<string, string> = {
+      win: 'bg-green-500/10 text-green-600 border-green-500/20',
+      loss: 'bg-red-500/10 text-red-600 border-red-500/20',
+      draw: 'bg-muted text-muted-foreground border-muted',
+    };
+    
+    return (
+      <Badge variant="outline" className={variants[result]}>
+        {result.charAt(0).toUpperCase() + result.slice(1)}
+      </Badge>
+    );
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <p className="text-gray-600">Loading game history...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={() => navigate("/")}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Back to Home
-          </button>
-        </div>
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   const groupedGames = groupGamesByDate(games);
-  const dateKeys = Object.keys(groupedGames);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Game History</h1>
-          <button
-            onClick={() => navigate("/")}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition"
-          >
-            ← Back to Home
-          </button>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="container max-w-4xl py-8"
+    >
+      <div className="flex items-center gap-3 mb-8">
+        <div className="p-2 rounded-lg bg-primary/10">
+          <History className="h-6 w-6 text-primary" />
         </div>
-
-        {games.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <p className="text-gray-600">No games played yet. Start your first game!</p>
-          </div>
-        ) : (
-          dateKeys.map((dateKey) => (
-            <div key={dateKey} className="mb-8">
-              <h2 className="text-xl font-semibold text-gray-800 mb-3">{dateKey}</h2>
-              <div className="bg-white rounded-lg shadow overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        You
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Opponent
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Game ID
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Result
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {groupedGames[dateKey].map((game) => (
-                      <tr key={game.game_id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {game.player1.username}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                          {game.player2.username}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                          {game.game_id.substring(0, 8)}...
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getResultBadgeClass(
-                              game.result
-                            )}`}
-                          >
-                            {game.result.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <button
-                            onClick={() => handleViewBoard(game.game_id)}
-                            className="text-blue-600 hover:text-blue-900 font-medium"
-                          >
-                            View Board →
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))
-        )}
+        <div>
+          <h1 className="text-2xl font-bold">Game History</h1>
+          <p className="text-muted-foreground">Review your past matches</p>
+        </div>
       </div>
-    </div>
+
+      {error ? (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            {error.message}
+          </CardContent>
+        </Card>
+      ) : games.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <History className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+            <p className="text-muted-foreground">No games played yet</p>
+            <p className="text-sm text-muted-foreground/70">
+              Start a match to see your history here
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <ScrollArea className="h-[calc(100vh-250px)]">
+          <div className="space-y-6 pr-4">
+            {Object.entries(groupedGames).map(([date, dateGames]) => (
+              <motion.div
+                key={date}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <h2 className="text-sm font-medium text-muted-foreground mb-3">
+                  {date}
+                </h2>
+                <div className="space-y-2">
+                  {dateGames.map((game, index) => (
+                    <motion.div
+                      key={game.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                    >
+                      <Card className="hover:bg-muted/50 transition-colors">
+                        <CardContent className="py-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              {getResultIcon(game.result)}
+                              <div>
+                                <p className="font-medium">
+                                  vs {game.opponentUsername}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {game.movesCount} moves • {game.endReason}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm text-muted-foreground">
+                                {format(parseISO(game.createdAt), 'h:mm a')}
+                              </span>
+                              {getResultBadge(game.result)}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </ScrollArea>
+      )}
+    </motion.div>
   );
 };
 

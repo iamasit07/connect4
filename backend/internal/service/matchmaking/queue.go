@@ -53,7 +53,7 @@ func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string, diffi
 			Player1ID:       userID,
 			Player1Username: username,
 			Player2ID:       nil,
-			Player2Username: domain.BotUsername,
+			Player2Username: domain.GetBotName(difficulty),
 			BotDifficulty:   difficulty,
 		}
 		m.MatchChannel <- match

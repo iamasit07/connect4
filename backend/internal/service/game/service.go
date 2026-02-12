@@ -67,7 +67,7 @@ func (sm *SessionManager) CreateSession(player1ID int64, player1Username string,
 	sm.Session[gameID] = session
 	sm.UserToGame[player1ID] = gameID
 
-	if player2Username != domain.BotUsername && player2ID != nil {
+	if player2ID != nil {
 		sm.UserToGame[*player2ID] = gameID
 	}
 
@@ -218,7 +218,7 @@ func (gs *GameSession) GetOpponentID(userID int64) *int64 {
 }
 
 func (gs *GameSession) IsBot() bool {
-	return gs.Player2Username == domain.BotUsername
+	return gs.Player2ID == nil
 }
 
 func (gs *GameSession) cleanupConnections(conn ConnectionManagerInterface) {
@@ -289,7 +289,7 @@ func NewGameSession(player1ID int64, player1Username string, player2ID *int64, p
 		Board:       gs.Game.Board,
 	})
 
-	if player2Username != domain.BotUsername && player2ID != nil {
+	if player2ID != nil {
 		conn.SendMessage(*player2ID, domain.ServerMessage{
 			Type:        "game_start",
 			GameID:      gs.GameID,
@@ -356,6 +356,19 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 	}
 
 	if gs.Game.Status == domain.StatusWon {
+		moveMadeMsg := domain.ServerMessage{
+			Type:     "move_made",
+			Column:   column,
+			Row:      row,
+			Player:   int(playerID),
+			Board:    gs.Game.Board,
+			NextTurn: int(gs.Game.CurrentPlayer),
+		}
+		conn.SendMessage(gs.Player1ID, moveMadeMsg)
+		if !gs.IsBot() && gs.Player2ID != nil {
+			conn.SendMessage(*gs.Player2ID, moveMadeMsg)
+		}
+
 		gs.FinishedAt = time.Now()
 		winnerUsername := gs.GetUsername(gs.Game.Winner)
 		winnerID := userID
@@ -381,13 +394,25 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 			gs.Player2ID, gs.Player2Username, &winnerID, winnerUsername,
 			gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt, convertBoardToInts(gs.Game.Board))
 
-		// Start 30-second post-game timer for rematch opportunity
 		gs.StartPostGameTimer(conn)
 
 		return nil
 	}
 
 	if gs.Game.Status == domain.StatusDraw {
+		moveMadeMsg := domain.ServerMessage{
+			Type:     "move_made",
+			Column:   column,
+			Row:      row,
+			Player:   int(playerID),
+			Board:    gs.Game.Board,
+			NextTurn: int(gs.Game.CurrentPlayer),
+		}
+		conn.SendMessage(gs.Player1ID, moveMadeMsg)
+		if !gs.IsBot() && gs.Player2ID != nil {
+			conn.SendMessage(*gs.Player2ID, moveMadeMsg)
+		}
+
 		gs.FinishedAt = time.Now()
 		gs.Reason = "draw"
 
@@ -467,6 +492,16 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 	}
 
 	if gs.Game.Status == domain.StatusWon {
+		botMoveMsg := domain.ServerMessage{
+			Type:     "move_made",
+			Column:   botColumn,
+			Row:      botRow,
+			Player:   int(domain.Player2),
+			Board:    gs.Game.Board,
+			NextTurn: int(gs.Game.CurrentPlayer),
+		}
+		conn.SendMessage(gs.Player1ID, botMoveMsg)
+
 		gs.FinishedAt = time.Now()
 		gs.Reason = "connect_four"
 
@@ -475,7 +510,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 		allowRematch := true // Bot games allow infinite rematches
 		gameOverMsg := domain.ServerMessage{
 			Type:         "game_over",
-			Winner:       domain.BotUsername,
+			Winner:       gs.Player2Username,
 			Reason:       gs.Reason,
 			Board:        gs.Game.Board,
 			AllowRematch: &allowRematch,
@@ -483,7 +518,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
 
 		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
-			nil, domain.BotUsername, nil, domain.BotUsername,
+			nil, gs.Player2Username, nil, gs.Player2Username,
 			gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt, convertBoardToInts(gs.Game.Board))
 
 		// Start 30-second post-game timer for rematch opportunity
@@ -493,6 +528,16 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 	}
 
 	if gs.Game.Status == domain.StatusDraw {
+		botMoveMsg := domain.ServerMessage{
+			Type:     "move_made",
+			Column:   botColumn,
+			Row:      botRow,
+			Player:   int(domain.Player2),
+			Board:    gs.Game.Board,
+			NextTurn: int(gs.Game.CurrentPlayer),
+		}
+		conn.SendMessage(gs.Player1ID, botMoveMsg)
+
 		gs.FinishedAt = time.Now()
 		gs.Reason = "draw"
 
@@ -509,7 +554,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
 
 		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
-			nil, domain.BotUsername, nil, "draw",
+			nil, gs.Player2Username, nil, "draw",
 			gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt, convertBoardToInts(gs.Game.Board))
 
 		// Start 30-second post-game timer for rematch opportunity
@@ -725,7 +770,7 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 
 	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
-	allowRematch := false // Abandoned games don't allow rematch
+	allowRematch := false // Surrendered games don't allow rematch
 	gameOverMsg := domain.ServerMessage{
 		Type:         "game_over",
 		Winner:       opponentUsername,
