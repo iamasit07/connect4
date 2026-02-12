@@ -9,12 +9,14 @@ import { useGameHistory } from '@/hooks/queries/useGameQueries';
 import type { GameHistoryItem } from '@/features/game/types';
 
 const GameHistory = () => {
-  const { data: games = [], isLoading, error } = useGameHistory();
+  const { data, isLoading, error } = useGameHistory();
+  const games = data ?? [];
 
   const groupGamesByDate = (games: GameHistoryItem[]) => {
     const groups: Record<string, GameHistoryItem[]> = {};
     
     games.forEach((game) => {
+      if (!game.createdAt) return;
       const date = parseISO(game.createdAt);
       let key: string;
       
@@ -60,8 +62,6 @@ const GameHistory = () => {
     );
   };
 
-  const groupedGames = groupGamesByDate(games);
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
@@ -69,6 +69,8 @@ const GameHistory = () => {
       </div>
     );
   }
+
+  const groupedGames = groupGamesByDate(games);
 
   return (
     <motion.div

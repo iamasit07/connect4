@@ -116,6 +116,7 @@ export interface GameOverMessage {
   type: 'game_over';
   winner: string;
   reason: 'connect4' | 'timeout' | 'surrender' | 'disconnect';
+  board?: number[][];
   newRating?: number;
   winningCells?: { row: number; col: number }[];
 }

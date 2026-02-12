@@ -1,6 +1,6 @@
 import { WS_URL, API_BASE_URL, BOT_MOVE_DELAY } from '@/lib/config';
 import { useGameStore } from '../store/gameStore';
-import type { ServerMessage } from '../types';
+import type { Board, ServerMessage } from '../types';
 import { toast } from 'sonner';
 
 type MessageHandler = (message: ServerMessage) => void;
@@ -202,6 +202,7 @@ class WebSocketManager {
           winner: message.winner,
           reason: message.reason,
           winningCells: message.winningCells,
+          board: message.board as Board,
         });
         break;
 

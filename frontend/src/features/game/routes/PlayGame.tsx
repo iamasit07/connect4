@@ -63,7 +63,7 @@ const PlayGame = () => {
   const handleGoHome = () => {
     disconnect();
     resetGame();
-    navigate('/');
+    navigate('/dashboard');
   };
 
   const handleCancelQueue = () => {

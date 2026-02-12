@@ -21,7 +21,7 @@ export const GameEndActions = ({ onPlayAgain, onGoHome }: GameEndActionsProps) =
         size="lg"
       >
         <Home className="w-4 h-4" />
-        Go Home
+        Dashboard
       </Button>
       <Button
         onClick={onPlayAgain}

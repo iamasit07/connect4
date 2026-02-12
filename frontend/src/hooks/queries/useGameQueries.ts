@@ -17,6 +17,8 @@ export const useGameHistory = () => useQuery({
     const { data } = await api.get<GameHistoryItem[]>('/history');
     return data;
   },
+  staleTime: 0,
+  refetchOnMount: 'always',
 });
 
 export const useLiveGames = () => useQuery({

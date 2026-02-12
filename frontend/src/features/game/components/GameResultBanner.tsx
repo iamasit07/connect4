@@ -1,14 +1,24 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy, XCircle, Minus } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
+import { fireWinConfetti, fireDrawConfetti } from '@/lib/confetti';
 
 export const GameResultBanner = () => {
   const { gameStatus, winner, winReason, opponent } = useGameStore();
 
-  if (gameStatus !== 'finished') return null;
-
   const isDraw = winner === 'draw';
   const isWinner = winner !== 'draw' && winner !== opponent;
+
+  // Fire confetti on game end
+  useEffect(() => {
+    if (gameStatus !== 'finished') return;
+    if (isWinner) {
+      fireWinConfetti();
+    }
+  }, [gameStatus, isWinner, isDraw]);
+
+  if (gameStatus !== 'finished') return null;
 
   const getIcon = () => {
     if (isDraw) return <Minus className="w-8 h-8" />;
@@ -19,6 +29,7 @@ export const GameResultBanner = () => {
   const getMessage = () => {
     if (isDraw) return 'Draw!';
     if (isWinner) return 'You Won!';
+    if (winReason === 'surrender') return 'You Surrendered';
     return 'You Lost!';
   };
 

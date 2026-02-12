@@ -71,6 +71,7 @@ interface GameStore {
     winner: string;
     reason: string;
     winningCells?: { row: number; col: number }[];
+    board?: CellValue[][];
   }) => void;
   resetGame: () => void;
   
@@ -160,12 +161,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     timeLeft: timeLeft !== undefined ? timeLeft : state.turnTimeLimit,
   })),
   
-  endGame: ({ winner, reason, winningCells }) => set({
+  endGame: ({ winner, reason, winningCells, board }) => set((state) => ({
     gameStatus: 'finished',
     winner,
     winReason: reason,
     winningCells: winningCells || null,
-  }),
+    board: board || state.board,
+  })),
   
   resetGame: () => set({
     connectionStatus: 'disconnected',

@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -16,7 +17,21 @@ func NewHistoryHandler(gameRepo *postgres.GameRepo) *HistoryHandler {
 	return &HistoryHandler{GameRepo: gameRepo}
 }
 
+type historyResponse struct {
+	ID               string `json:"id"`
+	OpponentUsername string `json:"opponentUsername"`
+	Result           string `json:"result"`
+	EndReason        string `json:"endReason"`
+	CreatedAt        string `json:"createdAt"`
+	MovesCount       int    `json:"movesCount"`
+}
+
 func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	userID, ok := r.Context().Value("user_id").(int64)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -25,11 +40,44 @@ func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 
 	history, err := h.GameRepo.GetUserGameHistory(userID)
 	if err != nil {
+		log.Printf("[HISTORY] Error fetching history for user %d: %v", userID, err)
 		http.Error(w, "Failed to fetch history", http.StatusInternalServerError)
 		return
 	}
 
-	json.NewEncoder(w).Encode(history)
+	log.Printf("[HISTORY] Found %d games for user %d", len(history), userID)
+
+	response := make([]historyResponse, 0, len(history))
+	for _, game := range history {
+		opponent := game.Player2Username
+		if game.Player1ID != userID {
+			opponent = game.Player1Username
+		}
+		if opponent == "" {
+			opponent = "BOT"
+		}
+
+		var result string
+		if game.Reason == "draw" {
+			result = "draw"
+		} else if game.WinnerID != nil && *game.WinnerID == userID {
+			result = "win"
+		} else {
+			result = "loss"
+		}
+
+		response = append(response, historyResponse{
+			ID:               game.GameID,
+			OpponentUsername: opponent,
+			Result:           result,
+			EndReason:        game.Reason,
+			CreatedAt:        game.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			MovesCount:       game.TotalMoves,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func (h *HistoryHandler) GetGameDetails(w http.ResponseWriter, r *http.Request) {
@@ -39,9 +87,6 @@ func (h *HistoryHandler) GetGameDetails(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Invalid game ID", http.StatusBadRequest)
 		return
 	}
-	// Depending on route definition, ID might be last or 2nd to last
-	// If path is /api/history/{id}, it's last.
-	// We'll trust the user's logic or adjust.
 	gameID := pathParts[len(pathParts)-1]
     if gameID == "" {
         gameID = pathParts[len(pathParts)-2]
