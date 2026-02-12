@@ -89,8 +89,8 @@ const Dashboard = () => {
         <div className="grid gap-4 md:grid-cols-1">
           <Link to="/play">
             <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer group bg-gradient-to-r from-primary/10 to-secondary/10 border-2">
-              <CardContent className="flex items-center gap-6 p-8">
-                <div className="p-4 rounded-full bg-primary/20 group-hover:bg-primary/30 transition-colors">
+              <CardContent className="flex flex-col md:flex-row items-center gap-6 p-6 md:p-8 text-center md:text-left">
+                <div className="p-4 rounded-full bg-primary/20 group-hover:bg-primary/30 transition-colors shrink-0">
                   <Gamepad2 className="h-10 w-10 text-primary" />
                 </div>
                 <div className="flex-1">
@@ -99,7 +99,7 @@ const Dashboard = () => {
                     Play online against real players or practice with AI
                   </p>
                 </div>
-                <Button size="lg" className="px-8">Play Now</Button>
+                <Button size="lg" className="w-full md:w-auto px-8">Play Now</Button>
               </CardContent>
             </Card>
           </Link>

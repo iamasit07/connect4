@@ -46,8 +46,7 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 		return err
 	}
 
-	// Update player2 stats (if not bot)
-	if player2Username != "BOT" && player2ID != nil {
+	if player2ID != nil {
 		player2Won := (winnerID != nil && *winnerID == *player2ID)
 		if err := r.updatePlayerStatsTx(tx, *player2ID, player2Won); err != nil {
 			return err

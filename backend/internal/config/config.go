@@ -12,7 +12,6 @@ type Config struct {
 	Port                       string
 	ReconnectTimeout           time.Duration
 	BotMatchmakingTimeout      time.Duration
-	BotUsername                string
 	BotToken                   string
 	AllowedOrigins             []string
 	OAuthConfig                OAuthConfig
@@ -32,8 +31,7 @@ func LoadConfig() *Config {
 
 	// Game Config
 	reconnectTimeoutSec := GetEnvAsInt("RECONNECT_TIMEOUT_SECONDS", 30)
-	botMatchmakingTimeoutSec := GetEnvAsInt("BOT_MATCHMAKING_TIMEOUT_SECONDS", 10) // Matches .env now
-	botUsername := GetEnv("BOT_USERNAME", "BOT")
+	botMatchmakingTimeoutSec := GetEnvAsInt("BOT_MATCHMAKING_TIMEOUT_SECONDS", 10)
 	botToken := GetEnv("BOT_TOKEN", "tkn_bot_default")
 	
 	// Frontend & CORS
@@ -70,7 +68,6 @@ func LoadConfig() *Config {
 		Port:                      port,
 		ReconnectTimeout:          time.Duration(reconnectTimeoutSec) * time.Second,
 		BotMatchmakingTimeout:     time.Duration(botMatchmakingTimeoutSec) * time.Second,
-		BotUsername:               botUsername,
 		BotToken:                  botToken,
 		AllowedOrigins:            allowedOrigins,
 		OAuthConfig:               *oauthConfig,

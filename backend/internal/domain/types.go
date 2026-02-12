@@ -1,6 +1,29 @@
 package domain
 
-import "os"
+var BotNames = map[string]string{
+	"easy":   "Alice",
+	"medium": "Bob",
+	"hard":   "Charles",
+}
+
+func GetBotName(difficulty string) string {
+	if name, ok := BotNames[difficulty]; ok {
+		return name
+	}
+	return "BOT"
+}
+
+func IsBotName(username string) bool {
+	if username == "BOT" {
+		return true
+	}
+	for _, name := range BotNames {
+		if username == name {
+			return true
+		}
+	}
+	return false
+}
 
 type PlayerID int
 
@@ -10,11 +33,6 @@ const (
 	Player2 PlayerID = 2
 )
 
-// Bot username constant
-// import bot username from .env
-var BotUsername = os.Getenv("BOT_USERNAME")
-
-//for board representation 
 const (
 	Rows = 6
 	Columns = 7

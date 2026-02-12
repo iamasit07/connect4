@@ -21,27 +21,25 @@ export const BotDifficultyDialog = ({
 }: BotDifficultyDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-center">Choose Your Opponent</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-3 mt-4">
+        <div className="grid grid-cols-3 gap-3 mt-4">
           {(Object.entries(BOT_DIFFICULTIES) as [BotDifficulty, typeof BOT_DIFFICULTIES.easy][]).map(
             ([key, bot]) => (
               <Button
                 key={key}
-                variant="outline"
-                className="h-auto py-4 justify-start gap-4"
+                variant="ghost" 
+                className="w-full h-auto flex flex-col items-center gap-2 p-4 rounded-xl border border-border bg-card hover:bg-accent hover:border-primary/50 transition-all cursor-pointer whitespace-normal"
                 onClick={() => {
                   onOpenChange(false);
                   onSelectDifficulty(key);
                 }}
               >
-                <span className="text-2xl">{bot.emoji}</span>
-                <div className="text-left">
-                  <p className="font-semibold">{bot.name}</p>
-                  <p className="text-xs text-muted-foreground">{bot.description}</p>
-                </div>
+                <span className="text-4xl">{bot.emoji}</span>
+                <p className="font-semibold text-sm">{bot.name}</p>
+                <p className="text-xs text-muted-foreground capitalize">{key}</p>
               </Button>
             )
           )}

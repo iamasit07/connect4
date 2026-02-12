@@ -3,7 +3,6 @@ package matchmaking
 import (
 	"log"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
 )
 
@@ -22,7 +21,7 @@ func MatchMakingListener(queue *MatchmakingQueue, cm game.ConnectionManagerInter
 		// Terminate any existing sessions for these users to prevent jagged state
 		sm.TerminateSessionForUser(player1ID, cm)
 		
-		if player2Username != domain.BotUsername && player2ID != nil {
+		if player2ID != nil {
 			sm.TerminateSessionForUser(*player2ID, cm)
 		}
 

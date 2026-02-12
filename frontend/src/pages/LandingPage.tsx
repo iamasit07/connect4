@@ -52,7 +52,7 @@ const LandingPage = () => {
                 linear-gradient(to bottom, transparent, black 25%, black 75%, transparent)
               `,
               maskComposite: 'intersect',
-              WebkitMaskComposite: 'source-in' // fallback for webkit
+              WebkitMaskComposite: 'source-in'
             }}
           />
         </div>
@@ -61,7 +61,7 @@ const LandingPage = () => {
           initial="initial"
           animate="animate"
           variants={fadeIn}
-          className="max-w-4xl mx-auto space-y-8 relative z-10"
+          className="max-w-6xl mx-auto space-y-8 relative z-10"
         >
           <div className="space-y-4">
             <h1 className="text-6xl sm:text-7xl md:text-8xl font-bold tracking-tight text-primary">
