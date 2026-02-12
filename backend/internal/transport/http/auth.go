@@ -211,12 +211,39 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.UserRepo.GetLeaderboard()
+	rawStats, err := h.UserRepo.GetLeaderboard()
 	if err != nil {
 		http.Error(w, "Failed to fetch leaderboard", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(stats)
+
+	// Map to frontend expectation
+	type LeaderboardEntry struct {
+		Rank     int    `json:"rank"`
+		Username string `json:"username"`
+		Rating   int    `json:"rating"` // Simple rating based on wins for now
+		Wins     int    `json:"wins"`
+		Losses   int    `json:"losses"`
+	}
+
+	leaderboard := make([]LeaderboardEntry, 0, len(rawStats))
+	for i, stat := range rawStats {
+		losses := stat.GamesPlayed - stat.GamesWon
+		if losses < 0 {
+			losses = 0
+		}
+		
+		entry := LeaderboardEntry{
+			Rank:     i + 1,
+			Username: stat.Username,
+			Rating:   stat.GamesWon * 10, // Simple placeholder rating
+			Wins:     stat.GamesWon,
+			Losses:   losses,
+		}
+		leaderboard = append(leaderboard, entry)
+	}
+
+	json.NewEncoder(w).Encode(leaderboard)
 }
 
 func (h *AuthHandler) GetSessionHistory(w http.ResponseWriter, r *http.Request) {

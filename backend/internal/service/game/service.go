@@ -721,7 +721,7 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 		gs.GameID, abandoningUsername, abandoningUserID)
 
 	gs.FinishedAt = time.Now()
-	gs.Reason = "abandoned"
+	gs.Reason = "surrender"
 
 	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
@@ -729,10 +729,12 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 	gameOverMsg := domain.ServerMessage{
 		Type:         "game_over",
 		Winner:       opponentUsername,
-		Reason:       "abandoned",
+		Reason:       "surrender",
 		AllowRematch: &allowRematch,
 	}
 
+	// Notify BOTH players
+	conn.SendMessage(abandoningUserID, gameOverMsg)
 	if !gs.IsBot() && opponentID != nil {
 		conn.SendMessage(*opponentID, gameOverMsg)
 	}

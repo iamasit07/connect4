@@ -71,28 +71,21 @@ func ExtractDeviceInfo(r *http.Request) string {
 	return browser + " on " + os
 }
 
-// ExtractIPAddress gets the real IP address from the request
-// Handles proxies and load balancers by checking X-Forwarded-For and X-Real-IP headers
 func ExtractIPAddress(r *http.Request) string {
-	// Try X-Forwarded-For header first (used by most proxies)
 	xff := r.Header.Get("X-Forwarded-For")
 	if xff != "" {
-		// X-Forwarded-For can contain multiple IPs, take the first one
 		ips := strings.Split(xff, ",")
 		if len(ips) > 0 {
 			return strings.TrimSpace(ips[0])
 		}
 	}
 
-	// Try X-Real-IP header (used by nginx)
 	xri := r.Header.Get("X-Real-IP")
 	if xri != "" {
 		return strings.TrimSpace(xri)
 	}
-
-	// Fall back to RemoteAddr
+	
 	ip := r.RemoteAddr
-	// Remove port if present
 	if idx := strings.LastIndex(ip, ":"); idx != -1 {
 		ip = ip[:idx]
 	}

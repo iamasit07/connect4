@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
 )
@@ -23,10 +24,54 @@ func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	history, err := h.GameRepo.GetUserGameHistory(userID)
+	rawHistory, err := h.GameRepo.GetUserGameHistory(userID)
 	if err != nil {
 		http.Error(w, "Failed to fetch history", http.StatusInternalServerError)
 		return
+	}
+
+	// Map to frontend expectation
+	type GameHistoryItem struct {
+		ID               string    `json:"id"`
+		OpponentUsername string    `json:"opponentUsername"`
+		Result           string    `json:"result"` // "win", "loss", "draw"
+		EndReason        string    `json:"endReason"`
+		CreatedAt        time.Time `json:"createdAt"`
+		MovesCount       int       `json:"movesCount"`
+	}
+
+	history := make([]GameHistoryItem, 0, len(rawHistory))
+	for _, game := range rawHistory {
+		item := GameHistoryItem{
+			ID:         game.GameID,
+			EndReason:  game.Reason,
+			CreatedAt:  game.CreatedAt,
+			MovesCount: game.TotalMoves,
+		}
+
+		// Determine opponent
+		if game.Player1ID == userID {
+			if game.Player2Username != "" {
+				item.OpponentUsername = game.Player2Username
+			} else {
+				item.OpponentUsername = "Waiting..." // Should shouldn't happen for finished games
+			}
+		} else {
+			item.OpponentUsername = game.Player1Username
+		}
+
+		// Determine result
+		if game.WinnerID != nil {
+			if *game.WinnerID == userID {
+				item.Result = "win"
+			} else {
+				item.Result = "loss"
+			}
+		} else {
+			item.Result = "draw"
+		}
+
+		history = append(history, item)
 	}
 
 	json.NewEncoder(w).Encode(history)
