@@ -97,9 +97,9 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Set cookie and redirect to home page
+		// Set cookie and redirect to dashboard
 		httputil.SetAuthCookie(w, jwtToken)
-		http.Redirect(w, r, config.AppConfig.FrontendURL+"/", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, config.AppConfig.FrontendURL+"/dashboard", http.StatusTemporaryRedirect)
 
 	} else {
 		// --- CASE B: NEW USER (SETUP FLOW) ---
@@ -108,8 +108,6 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		setupToken, err := auth.GenerateSetupToken(userInfo.Email, userInfo.ID)
 		if err != nil {
 			log.Printf("[OAUTH] Failed to generate setup token: %v", err)
-			// Redirect to Frontend Setup Page
-			// Frontend should show a form: "Choose Username" & "Choose Password"
 			http.Redirect(w, r, config.AppConfig.FrontendURL+"/login?error=setup_failed", http.StatusTemporaryRedirect)
 			return
 		}

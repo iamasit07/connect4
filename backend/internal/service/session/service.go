@@ -90,10 +90,6 @@ func (s *AuthService) GetSession(sessionID string) (*domain.UserSession, error) 
 		if err == nil && session != nil {
 			return session, nil
 		}
-		if err != nil {
-			// Just log, don't fail, fallback to DB
-			// log.Printf("[SESSION] Cache lookup failed: %v", err)
-		}
 	}
 
 	// Fall back to database

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
 )
@@ -38,7 +39,7 @@ func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	history, err := h.GameRepo.GetUserGameHistory(userID)
+	rawHistory, err := h.GameRepo.GetUserGameHistory(userID)
 	if err != nil {
 		log.Printf("[HISTORY] Error fetching history for user %d: %v", userID, err)
 		http.Error(w, "Failed to fetch history", http.StatusInternalServerError)

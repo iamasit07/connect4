@@ -778,7 +778,7 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 		AllowRematch: &allowRematch,
 	}
 
-	// Notify BOTH players (including the one who surrendered)
+	// Notify BOTH players
 	conn.SendMessage(abandoningUserID, gameOverMsg)
 	if !gs.IsBot() && opponentID != nil {
 		conn.SendMessage(*opponentID, gameOverMsg)
