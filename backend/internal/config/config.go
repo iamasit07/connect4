@@ -57,7 +57,7 @@ func LoadConfig() *Config {
 	// Security
 	jwtSecret := GetEnv("JWT_SECRET", "your-secret-key-change-this-in-production")
 
-	oauthConfig := LoadOAuthConfig()
+	oauthConfig := LoadOAuthConfig(frontendURL)
 
 	AppConfig = &Config{
 		Port:                      port,

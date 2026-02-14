@@ -24,10 +24,14 @@ type GoogleUser struct {
 
 var GoogleOAuthConfig *oauth2.Config
 
-func LoadOAuthConfig() *OAuthConfig {
+func LoadOAuthConfig(frontendURL string) *OAuthConfig {
 	clientID := os.Getenv("GOOGLE_CLIENT_ID")
 	clientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
 	redirectURL := os.Getenv("GOOGLE_REDIRECT_URL")
+	
+	if redirectURL == "" {
+		redirectURL = frontendURL + "/api/auth/google/callback"
+	}
 
 	config := &oauth2.Config{
 		RedirectURL:  redirectURL,
