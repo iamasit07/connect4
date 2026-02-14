@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -33,6 +34,11 @@ type GameResult struct {
 
 // SaveGame saves a finished game and updates player stats transactionally
 func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username string, player2ID *int64, player2Username string, winnerID *int64, winnerUsername string, reason string, totalMoves, durationSeconds int, createdAt, finishedAt time.Time, boardState [][]int) error {
+	// DIAGNOSTIC: Check if user exists BEFORE transaction
+	var existsBefore bool
+	r.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM players WHERE id = $1)`, player1ID).Scan(&existsBefore)
+	log.Printf("[GAME-DIAG] BEFORE SaveGame: player1 %d exists=%v", player1ID, existsBefore)
+
 	tx, err := r.DB.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %v", err)
@@ -40,15 +46,36 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 
 	defer tx.Rollback()
 
+	isDraw := (winnerID == nil)
+
 	// Update player1 stats
-	player1Won := (winnerID != nil && *winnerID == player1ID)
-	if err := r.updatePlayerStatsTx(tx, player1ID, player1Won); err != nil {
+	var p1Result string
+	if isDraw {
+		p1Result = "draw"
+	} else if *winnerID == player1ID {
+		p1Result = "won"
+	} else {
+		p1Result = "lost"
+	}
+	if err := r.updatePlayerStatsTx(tx, player1ID, p1Result); err != nil {
 		return err
 	}
 
+	// DIAGNOSTIC: Check after player1 stats update
+	var existsAfterP1 bool
+	tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM players WHERE id = $1)`, player1ID).Scan(&existsAfterP1)
+	log.Printf("[GAME-DIAG] AFTER updatePlayerStats: player1 %d exists=%v", player1ID, existsAfterP1)
+
 	if player2ID != nil {
-		player2Won := (winnerID != nil && *winnerID == *player2ID)
-		if err := r.updatePlayerStatsTx(tx, *player2ID, player2Won); err != nil {
+		var p2Result string
+		if isDraw {
+			p2Result = "draw"
+		} else if *winnerID == *player2ID {
+			p2Result = "won"
+		} else {
+			p2Result = "lost"
+		}
+		if err := r.updatePlayerStatsTx(tx, *player2ID, p2Result); err != nil {
 			return err
 		}
 	}
@@ -77,21 +104,45 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 		return fmt.Errorf("failed to upsert game record: %v", err)
 	}
 
+	// DIAGNOSTIC: Check after game insert
+	var existsAfterInsert bool
+	tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM players WHERE id = $1)`, player1ID).Scan(&existsAfterInsert)
+	log.Printf("[GAME-DIAG] AFTER game insert: player1 %d exists=%v", player1ID, existsAfterInsert)
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %v", err)
 	}
+
+	// DIAGNOSTIC: Check AFTER commit
+	var existsAfterCommit bool
+	r.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM players WHERE id = $1)`, player1ID).Scan(&existsAfterCommit)
+	log.Printf("[GAME-DIAG] AFTER COMMIT: player1 %d exists=%v", player1ID, existsAfterCommit)
+
 	return nil
 }
 
-// updatePlayerStatsTx updates player stats within a transaction
-func (r *GameRepo) updatePlayerStatsTx(tx *sql.Tx, userID int64, won bool) error {
+func (r *GameRepo) updatePlayerStatsTx(tx *sql.Tx, userID int64, result string) error {
+	var wonInc, drawnInc, ratingDelta int
+	switch result {
+	case "won":
+		wonInc = 1
+		ratingDelta = 25
+	case "draw":
+		drawnInc = 1
+		ratingDelta = 10
+	default: // "lost"
+		ratingDelta = -10
+	}
+
 	query := `
 	UPDATE players
 	SET games_played = games_played + 1,
-	    games_won = games_won + CASE WHEN $2 THEN 1 ELSE 0 END
+	    games_won = games_won + $2,
+	    games_drawn = games_drawn + $3,
+	    rating = GREATEST(0, rating + $4)
 	WHERE id = $1;
 	`
-	_, err := tx.Exec(query, userID, won)
+	_, err := tx.Exec(query, userID, wonInc, drawnInc, ratingDelta)
 	if err != nil {
 		return fmt.Errorf("failed to update player stats in transaction: %v", err)
 	}

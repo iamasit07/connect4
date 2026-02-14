@@ -1,33 +1,39 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
-import { History, Trophy, X, Minus, Loader2 } from 'lucide-react';
+import { History, Trophy, X, Minus, Loader2, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useGameHistory } from '@/hooks/queries/useGameQueries';
 import type { GameHistoryItem } from '@/features/game/types';
 
 const GameHistory = () => {
-  const { data, isLoading, error } = useGameHistory();
+  const { data, isLoading, error, refetch } = useGameHistory();
   const games = data ?? [];
 
   const groupGamesByDate = (games: GameHistoryItem[]) => {
     const groups: Record<string, GameHistoryItem[]> = {};
     
     games.forEach((game) => {
-      if (!game.createdAt) return;
-      const date = parseISO(game.createdAt);
-      let key: string;
+      let key = 'Unknown Date';
       
-      if (isToday(date)) {
-        key = 'Today';
-      } else if (isYesterday(date)) {
-        key = 'Yesterday';
-      } else {
-        key = format(date, 'MMMM d, yyyy');
+      if (game.createdAt) {
+        try {
+          const date = parseISO(game.createdAt);
+          if (isToday(date)) {
+            key = 'Today';
+          } else if (isYesterday(date)) {
+            key = 'Yesterday';
+          } else {
+            key = format(date, 'MMMM d, yyyy');
+          }
+        } catch (e) {
+          console.warn('Invalid date:', game.createdAt);
+        }
       }
-      
+    
       if (!groups[key]) {
         groups[key] = [];
       }
@@ -86,6 +92,15 @@ const GameHistory = () => {
           <h1 className="text-2xl font-bold">Game History</h1>
           <p className="text-muted-foreground">Review your past matches</p>
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ml-auto"
+          onClick={() => refetch()}
+          title="Refresh history"
+        >
+          <RefreshCw className="h-5 w-5" />
+        </Button>
       </div>
 
       {error ? (

@@ -4,6 +4,8 @@ import { Gamepad2, Trophy, History, User } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/features/auth/store/authStore';
+import { LiveGamesList } from '@/features/game/components/LiveGamesList';
+import { toast } from 'sonner';
 
 const Dashboard = () => {
   const { user } = useAuthStore();
@@ -30,6 +32,10 @@ const Dashboard = () => {
       color: 'bg-muted text-muted-foreground',
     },
   ];
+
+  const handleSpectate = (gameId: string) => {
+    toast.info('Spectator mode coming soon!');
+  };
 
   return (
     <div className="container py-8">
@@ -134,6 +140,16 @@ const Dashboard = () => {
             </motion.div>
           ))}
         </div>
+      </motion.div>
+
+      {/* Live Games Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="mt-8"
+      >
+        <LiveGamesList onSpectate={handleSpectate} />
       </motion.div>
     </div>
   );

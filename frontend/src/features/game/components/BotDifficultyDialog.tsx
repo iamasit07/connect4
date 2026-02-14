@@ -21,7 +21,7 @@ export const BotDifficultyDialog = ({
 }: BotDifficultyDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="text-center">Choose Your Opponent</DialogTitle>
         </DialogHeader>

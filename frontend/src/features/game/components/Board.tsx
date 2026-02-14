@@ -40,18 +40,20 @@ export const Board = ({ onColumnClick }: BoardProps) => {
   }, [lastMove]);
 
   return (
-    <div className="w-full max-w-[min(90vw,500px)] mx-auto">
+    <div className="w-full max-w-[min(95vw,600px)] aspect-[7/6] mx-auto flex flex-col justify-end relative">
       {/* Column indicators */}
       {gameStatus === 'playing' && (
-        <ColumnIndicator
-          columns={BOARD_COLS}
-          hoveredColumn={hoveredColumn}
-          currentPlayer={currentTurn}
-          isMyTurn={isMyTurn()}
-          onColumnClick={handleColumnClick}
-          onColumnHover={setHoveredColumn}
-          canDropInColumn={canDropInColumn}
-        />
+        <div className="h-8 sm:h-10 mb-1 flex-none">
+          <ColumnIndicator
+            columns={BOARD_COLS}
+            hoveredColumn={hoveredColumn}
+            currentPlayer={currentTurn}
+            isMyTurn={isMyTurn()}
+            onColumnClick={handleColumnClick}
+            onColumnHover={setHoveredColumn}
+            canDropInColumn={canDropInColumn}
+          />
+        </div>
       )}
       
       {/* Game Board */}
@@ -59,9 +61,9 @@ export const Board = ({ onColumnClick }: BoardProps) => {
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-        className="bg-board rounded-xl sm:rounded-2xl p-2 sm:p-3 md:p-4 board-3d"
+        className="bg-board rounded-xl sm:rounded-2xl p-2 sm:p-3 md:p-4 board-3d h-full w-full flex flex-col justify-center shadow-xl"
       >
-        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2">
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2 h-full">
           {board.map((row, rowIndex) =>
             row.map((cell, colIndex) => (
               <Cell

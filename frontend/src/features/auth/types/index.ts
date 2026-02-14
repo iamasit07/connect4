@@ -1,6 +1,7 @@
 export interface User {
   id: string;
   username: string;
+  name: string;
   email: string;
   rating?: number;
   wins?: number;
@@ -20,18 +21,19 @@ export interface LoginCredentials {
 }
 
 export interface SignupCredentials {
-  username: string;
+  name: string;
   email: string;
+}
+
+export interface CompleteSignupRequest {
+  token?: string;
+  name: string;
+  email: string;
+  username: string;
   password: string;
 }
 
 export interface AuthResponse {
   token: string;
   user: User;
-}
-
-export interface CompleteSignupRequest {
-  token: string;
-  username: string;
-  password: string;
 }

@@ -8,16 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import api from '@/lib/axios';
 import { useAuthStore } from '@/features/auth/store/authStore';
+import { useUpdateProfile } from '@/hooks/queries/useAuthQueries';
 
 const Profile = () => {
   const { user, setUser } = useAuthStore();
+  const updateProfileMutation = useUpdateProfile();
   const [isEditing, setIsEditing] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
-    username: user?.username || '',
-    email: user?.email || '',
+    name: user?.name || '',
   });
 
   const stats = [
@@ -53,29 +52,24 @@ const Profile = () => {
     : 0;
 
   const handleSave = async () => {
-    setIsLoading(true);
     try {
-      const response = await api.put('/auth/profile', formData);
-      const token = localStorage.getItem('jwt_token');
-      if (token) {
-        setUser(response.data, token);
-      }
+      const response = await updateProfileMutation.mutateAsync({ name: formData.name });
+      setUser(response.user);
       toast.success('Profile updated successfully');
       setIsEditing(false);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to update profile');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleCancel = () => {
     setFormData({
-      username: user?.username || '',
-      email: user?.email || '',
+      name: user?.name || '',
     });
     setIsEditing(false);
   };
+
+  const displayName = user?.name || user?.username || '';
 
   return (
     <motion.div
@@ -109,13 +103,13 @@ const Profile = () => {
                   variant="ghost"
                   size="sm"
                   onClick={handleCancel}
-                  disabled={isLoading}
+                  disabled={updateProfileMutation.isPending}
                 >
                   <X className="h-4 w-4 mr-2" />
                   Cancel
                 </Button>
-                <Button size="sm" onClick={handleSave} disabled={isLoading}>
-                  {isLoading ? (
+                <Button size="sm" onClick={handleSave} disabled={updateProfileMutation.isPending}>
+                  {updateProfileMutation.isPending ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <Save className="h-4 w-4 mr-2" />
@@ -129,12 +123,13 @@ const Profile = () => {
             <div className="flex items-center gap-6 mb-6">
               <Avatar className="h-20 w-20">
                 <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                  {user?.username?.slice(0, 2).toUpperCase() || 'U'}
+                  {displayName.slice(0, 2).toUpperCase() || 'U'}
                 </AvatarFallback>
               </Avatar>
               <div>
-                <h2 className="text-xl font-semibold">{user?.username}</h2>
-                <p className="text-muted-foreground">{user?.email}</p>
+                <h2 className="text-xl font-semibold">{displayName}</h2>
+                <p className="text-sm text-muted-foreground">@{user?.username}</p>
+                <p className="text-sm text-muted-foreground">{user?.email}</p>
               </div>
             </div>
 
@@ -143,29 +138,31 @@ const Profile = () => {
             {isEditing ? (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="username">Username</Label>
+                  <Label htmlFor="name">Display Name</Label>
                   <Input
-                    id="username"
-                    value={formData.username}
+                    id="name"
+                    value={formData.name}
                     onChange={(e) =>
-                      setFormData({ ...formData, username: e.target.value })
+                      setFormData({ ...formData, name: e.target.value })
                     }
+                    placeholder="Enter your display name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                  />
+                  <Label className="text-muted-foreground">Username</Label>
+                  <p className="font-medium text-sm">{user?.username}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Email</Label>
+                  <p className="font-medium text-sm">{user?.email}</p>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
+                <div>
+                  <Label className="text-muted-foreground">Display Name</Label>
+                  <p className="font-medium">{user?.name || '—'}</p>
+                </div>
                 <div>
                   <Label className="text-muted-foreground">Username</Label>
                   <p className="font-medium">{user?.username}</p>

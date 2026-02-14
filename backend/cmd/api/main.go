@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/iamasit07/4-in-a-row/backend/internal/config"
+	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
 	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
+	"github.com/iamasit07/4-in-a-row/backend/internal/repository/redis"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/cleanup"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/matchmaking"
@@ -56,17 +58,50 @@ func main() {
 	}
 	log.Println("Database migration completed successfully")
 
+	// DIAGNOSTIC: Check for any triggers on the players table
+	rows, trigErr := db.Query(`SELECT trigger_name, event_manipulation, action_statement FROM information_schema.triggers WHERE event_object_table = 'players'`)
+	if trigErr == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var name, event, action string
+			rows.Scan(&name, &event, &action)
+			log.Printf("[DIAG] TRIGGER on players: name=%s, event=%s, action=%s", name, event, action)
+		}
+	}
+	// Also check how many players exist
+	var playerCount int
+	db.QueryRow(`SELECT COUNT(*) FROM players`).Scan(&playerCount)
+	log.Printf("[DIAG] Players table has %d rows", playerCount)
+
 	// 3. Initialize Repositories (Persistence Layer)
 	gameRepo := postgres.NewGameRepo(db)
 	userRepo := postgres.NewUserRepo(db)
 	sessionRepo := postgres.NewSessionRepo(db)
 
+	// 3b. Initialize Redis
+	if err := redis.InitRedis(); err != nil {
+		log.Printf("Failed to initialize Redis: %v", err)
+	}
+	defer redis.CloseRedis()
+
 	// 4. Initialize Services (Business Logic Layer)
 	gameService := game.NewService(gameRepo)
 	sessionManager := game.NewSessionManager(gameRepo)
-	authService := session.NewAuthService(sessionRepo, nil) // No redis/cache for now
+	
+	// Setup Redis Cache wrapper if Redis is enabled
+	var cache session.CacheRepository
+	if redis.IsRedisEnabled() && redis.RedisClient != nil {
+		cache = redis.NewRedisCache(redis.RedisClient)
+	}
+	
+	authService := session.NewAuthService(sessionRepo, cache)
 	connManager := websocket.NewConnectionManager()
-	matchmakingQueue := matchmaking.NewMatchmakingQueue()
+	
+	// Define timeout callback for matchmaking
+	onMatchmakingTimeout := func(userID int64) {
+		connManager.SendMessage(userID, domain.ServerMessage{Type: "queue_timeout"})
+	}
+	matchmakingQueue := matchmaking.NewMatchmakingQueue(onMatchmakingTimeout)
 
 	// 5. Initialize Background Workers
 	cleanupWorker := cleanup.NewWorker(sessionManager, sessionRepo) 
@@ -75,7 +110,7 @@ func main() {
 	go matchmaking.MatchMakingListener(matchmakingQueue, connManager, sessionManager)
 	
 	// 6. Initialize HTTP Handlers (API Layer)
-	authHandler := transportHttp.NewAuthHandler(userRepo, sessionRepo, connManager)
+	authHandler := transportHttp.NewAuthHandler(userRepo, sessionRepo, connManager, cache)
 	historyHandler := transportHttp.NewHistoryHandler(gameRepo)
 	oauthHandler := transportHttp.NewOAuthHandler(userRepo, sessionRepo, &cfg.OAuthConfig, connManager)
 	wsHandler := websocket.NewHandler(connManager, matchmakingQueue, sessionManager, gameService, authService)
@@ -92,6 +127,7 @@ func main() {
 	mux.HandleFunc("/api/auth/login", authHandler.Login)
 	mux.HandleFunc("/api/auth/logout", authHandler.Logout)
 	mux.HandleFunc("/api/auth/me", protected(authHandler.Me))
+	mux.HandleFunc("/api/auth/profile", protected(authHandler.UpdateProfile))
 	mux.HandleFunc("/api/leaderboard", authHandler.Leaderboard)
 
 	// OAuth Routes
@@ -104,15 +140,11 @@ func main() {
 	mux.HandleFunc("/api/history/", protected(historyHandler.GetGameDetails))
 	mux.HandleFunc("/api/sessions", protected(authHandler.GetSessionHistory))
 
-	// WebSocket Route
 	mux.HandleFunc("/ws", wsHandler.HandleWebSocket)
 
-	// 8. Apply Global Middleware (CORS)
 	handler := middleware.EnableCORS(mux)
-
-	// 9. Start Server with Configured Port and Graceful Shutdown
 	srv := &http.Server{
-		Addr:    ":" + cfg.Port, // Use Port from config
+		Addr:    ":" + cfg.Port,
 		Handler: handler,
 	}
 

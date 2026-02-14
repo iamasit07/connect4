@@ -19,7 +19,7 @@ export const fireWinConfetti = () => {
       return;
     }
 
-    const particleCount = 50 * (timeLeft / duration);
+    const particleCount = 20 * (timeLeft / duration);
 
     // Left side burst
     confetti({

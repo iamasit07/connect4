@@ -1,15 +1,12 @@
 services:
-  # Frontend: Custom Node container with Vite for Hot Module Replacement (HMR)
+  # Frontend: Production Nginx build
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     container_name: 4-in-a-row-frontend
     ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - "80:80"
     environment:
       - VITE_PROXY_TARGET=http://backend:8080
     networks:
@@ -17,17 +14,14 @@ services:
     depends_on:
       - backend
 
-  # Backend: Go container with Air for hot reload
+  # Backend: Production compiled binary
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     container_name: 4-in-a-row-backend
     ports:
       - "8080:8080"
-    volumes:
-      - ./backend:/app
-      - /app/tmp
     env_file:
       - ./backend/.env
     environment:
@@ -37,16 +31,14 @@ services:
     depends_on:
       - redis
 
-  # Redis: Standard Redis image
+  # Redis: Same as dev
   redis:
     image: redis:7-alpine
     container_name: 4-in-a-row-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    restart: unless-stopped
+    restart: always
     networks:
       - app-network
 

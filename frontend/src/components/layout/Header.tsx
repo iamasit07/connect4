@@ -70,7 +70,7 @@ export const Header = ({ onLogout }: HeaderProps) => {
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar className="h-10 w-10">
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      {user.username.substring(0, 2).toUpperCase()}
+                      {(user.name || user.username).substring(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
@@ -78,7 +78,7 @@ export const Header = ({ onLogout }: HeaderProps) => {
               <DropdownMenuContent align="end" className="w-56">
                 <div className="flex items-center justify-start gap-2 p-2">
                   <div className="flex flex-col space-y-1 leading-none">
-                    <p className="font-medium">{user.username}</p>
+                    <p className="font-medium">{user.name || user.username}</p>
                     <p className="text-xs text-muted-foreground">{user.email}</p>
                   </div>
                 </div>

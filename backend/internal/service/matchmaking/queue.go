@@ -22,9 +22,10 @@ type MatchmakingQueue struct {
 	Mux            *sync.Mutex
 	MatchChannel   chan Match
 	Timer          *map[int64]*time.Timer
+	OnTimeout      func(userID int64)
 }
 
-func NewMatchmakingQueue() *MatchmakingQueue {
+func NewMatchmakingQueue(onTimeout func(userID int64)) *MatchmakingQueue {
 	timerMap := make(map[int64]*time.Timer)
 	waitingPlayers := make(map[int64]string) // userID → username
 	difficulties := make(map[int64]string)   // userID → difficulty
@@ -34,6 +35,7 @@ func NewMatchmakingQueue() *MatchmakingQueue {
 		MatchChannel:   make(chan Match, 100),
 		Mux:            &sync.Mutex{},
 		Timer:          &timerMap,
+		OnTimeout:      onTimeout,
 	}
 	return queue
 }
@@ -64,8 +66,7 @@ func (m *MatchmakingQueue) AddPlayerToQueue(userID int64, username string, diffi
 	if len(m.WaitingPlayers) == 0 {
 		m.WaitingPlayers[userID] = username
 		m.Difficulties[userID] = difficulty
-		// Use config timeout (5 minutes default)
-		timer := time.AfterFunc(config.AppConfig.BotMatchmakingTimeout, func() {
+		timer := time.AfterFunc(config.AppConfig.MatchmakingTimeout, func() {
 			m.HandleTimeout(userID)
 		})
 		(*m.Timer)[userID] = timer
@@ -107,6 +108,10 @@ func (m *MatchmakingQueue) HandleTimeout(userID int64) {
 	delete(m.WaitingPlayers, userID)
 	delete(m.Difficulties, userID)
 	m.stopAndDeleteTimer(userID)
+	
+	if m.OnTimeout != nil {
+		go m.OnTimeout(userID)
+	}
 }
 
 func (m *MatchmakingQueue) GetMatchChannel() chan Match {
