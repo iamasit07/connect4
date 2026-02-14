@@ -1,0 +1,16 @@
+# Binaries
+main
+tmp/
+
+# Config
+.env
+.env.*
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+Dockerfile.dev
+docker-compose.yml

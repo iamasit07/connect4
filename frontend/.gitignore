@@ -22,20 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Optional npm cache directory
-.npm
-.eslintcache
-.next
-.cache
-.nuxt
-.out
-coverage
-.build
-.env
-.env.local
-.env.*.local
-
-.yarnrc.yml
-yarn.lock
-.yarn/*

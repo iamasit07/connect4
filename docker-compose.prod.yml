@@ -1,0 +1,50 @@
+services:
+  # Frontend: Production Nginx build
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: 4-in-a-row-frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_PROXY_TARGET=http://backend:8080
+    networks:
+      - app-network
+    depends_on:
+      - backend
+
+  # Backend: Production compiled binary
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: 4-in-a-row-backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    environment:
+      - REDIS_URL=redis:6379
+    networks:
+      - app-network
+    depends_on:
+      - redis
+
+  # Redis: Same as dev
+  redis:
+    image: redis:7-alpine
+    container_name: 4-in-a-row-redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: always
+    networks:
+      - app-network
+
+volumes:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge
