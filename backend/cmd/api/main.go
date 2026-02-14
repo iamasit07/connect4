@@ -142,6 +142,25 @@ func main() {
 
 	mux.HandleFunc("/ws", wsHandler.HandleWebSocket)
 
+	if _, err := os.Stat("./static"); err == nil {
+		fileServer := http.FileServer(http.Dir("./static"))
+		
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			path := "./static" + r.URL.Path
+			
+			if r.URL.Path == "/" {
+				http.ServeFile(w, r, "./static/index.html")
+				return
+			}
+
+			if info, err := os.Stat(path); err == nil && !info.IsDir() {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+			http.ServeFile(w, r, "./static/index.html")
+		})
+	}
+
 	handler := middleware.EnableCORS(mux)
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

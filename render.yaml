@@ -1,0 +1,36 @@
+services:
+  # Monolith Service (Frontend + Backend)
+  - type: web
+    name: connect4-monolith
+    env: docker
+    dockerContext: .
+    dockerfilePath: Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: connect4-redis
+          property: connectionString
+      - key: DATABASE_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://connect4-monolith.onrender.com
+      - key: ALLOWED_ORIGINS
+        value: https://connect4-monolith.onrender.com
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URL
+        value: https://connect4-monolith.onrender.com/api/auth/google/callback
+
+  # Redis Service
+  - type: redis
+    name: connect4-redis
+    plan: free
+    ipAllowList: []

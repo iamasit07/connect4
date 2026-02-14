@@ -6,6 +6,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm install
 
+ARG VITE_BACKEND_URL
+ARG VITE_WS_URL
+ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+
 COPY . .
 
 RUN npm run build
