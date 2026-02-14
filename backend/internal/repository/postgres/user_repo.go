@@ -238,7 +238,7 @@ func (r *UserRepo) GetLeaderboard() ([]PlayerStats, error) {
 	}
 	defer rows.Close()
 
-	var leaderboard []PlayerStats
+	leaderboard := make([]PlayerStats, 0)
 	for rows.Next() {
 		var stats PlayerStats
 		if err := rows.Scan(&stats.Rank, &stats.Username, &stats.Rating, &stats.Wins, &stats.Losses); err != nil {
