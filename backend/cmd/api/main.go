@@ -150,11 +150,18 @@ func main() {
 				http.ServeFile(w, r, "./static/index.html")
 				return
 			}
-
+			
 			if info, err := os.Stat(path); err == nil && !info.IsDir() {
 				fileServer.ServeHTTP(w, r)
 				return
 			}
+			
+			if len(r.URL.Path) > 4 && (r.URL.Path[0:8] == "/assets/" || r.URL.Path[len(r.URL.Path)-4:] == ".css" || r.URL.Path[len(r.URL.Path)-3:] == ".js") {
+				http.NotFound(w, r)
+				return
+			}
+			
+			// 4. Otherwise, serve index.html (client-side routing)
 			http.ServeFile(w, r, "./static/index.html")
 		})
 	}
