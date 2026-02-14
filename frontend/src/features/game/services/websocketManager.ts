@@ -146,11 +146,6 @@ class WebSocketManager {
         toast.info('Searching for opponent...');
         break;
 
-      case 'reconnect_success':
-        toast.info('Resuming active game...');
-        this.send({ type: 'reconnect' });
-        break;
-
       case 'game_start':
         store.initGame({
           gameId: message.gameId,
@@ -160,11 +155,7 @@ class WebSocketManager {
           opponent: message.opponent,
         });
         
-        if (message.type === 'game_start') {
-          toast.success(`Game started against ${message.opponent}!`);
-        } else {
-          toast.success('Reconnected to game!');
-        }
+        toast.success(`Game started against ${message.opponent}!`);
         
         // Notify all game start callbacks
         this.onGameStartCallbacks.forEach(callback => {

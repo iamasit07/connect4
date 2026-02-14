@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useGameSocket } from '../hooks/useGameSocket';
@@ -8,24 +8,32 @@ import type { BotDifficulty } from '../types';
 const BotLoadingPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { findMatch, disconnect } = useGameSocket((gameId) => {
-    // Navigate to game when it starts
-    console.log('[BotLoadingPage] Game started with ID:', gameId, '- Navigating to /game/' + gameId);
+  const gameFound = useRef(false);
+
+  const onGameStart = useCallback((gameId: string) => {
+    gameFound.current = true;
+    console.log('[BotLoadingPage] Game started with ID:', gameId);
     navigate(`/game/${gameId}`);
-  });
+  }, [navigate]);
+
+  const { findMatch, disconnect } = useGameSocket(onGameStart);
   const { resetGame } = useGameStore();
   const difficulty = (location.state as { difficulty?: BotDifficulty })?.difficulty;
 
-  // Auto-start bot game when component mounts
   useEffect(() => {
     if (difficulty) {
       findMatch('bot', difficulty);
     } else {
-      // No difficulty specified, go back to play
       navigate('/play');
     }
-    // Don't disconnect on unmount - WebSocket should persist to GamePage
-  }, [difficulty, findMatch, navigate]);
+
+    return () => {
+      if (!gameFound.current) {
+        disconnect();
+        resetGame();
+      }
+    };
+  }, []);
 
   const handleCancel = () => {
     disconnect();

@@ -34,7 +34,6 @@ export interface AbandonMessage {
 export type ServerMessage = 
   | QueueJoinedMessage 
   | QueueLeftMessage
-  | ReconnectFoundMessage
   | InitGameMessage 
   | GameStateMessage 
   | MoveMadeMessage
@@ -43,15 +42,15 @@ export type ServerMessage =
   | RematchAcceptedMessage
   | RematchDeclinedMessage
   | SpectatorCountMessage
+  | QueueTimeoutMessage
   | ErrorMessage;
+
+export interface QueueTimeoutMessage {
+  type: 'queue_timeout';
+}
 
 export interface QueueLeftMessage {
   type: 'queue_left';
-}
-
-export interface ReconnectFoundMessage {
-  type: 'reconnect_success';
-  gameId: string;
 }
 
 export interface RematchRequestMessage {

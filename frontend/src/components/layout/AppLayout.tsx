@@ -8,7 +8,7 @@ export const AppLayout = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header onLogout={logout} />
-      <main className="flex-1">
+      <main className="flex-1 flex flex-col relative">
         <Outlet />
       </main>
     </div>

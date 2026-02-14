@@ -4,7 +4,10 @@ import { useGameStore } from '../store/gameStore';
 import type { BotDifficulty } from '../types';
 import { toast } from 'sonner';
 
-export const useGameSocket = (onGameStart?: (gameId: string) => void) => {
+export const useGameSocket = (
+  onGameStart?: (gameId: string) => void,
+  onQueueTimeout?: () => void
+) => {
   const { setConnectionStatus, setQueuing } = useGameStore();
 
   // Register onGameStart callback
@@ -15,34 +18,40 @@ export const useGameSocket = (onGameStart?: (gameId: string) => void) => {
     return unregister;
   }, [onGameStart]);
 
-  // Connect on mount
+  // Register onQueueTimeout callback
   useEffect(() => {
-    const connect = async () => {
-      try {
-        setConnectionStatus('connecting');
-        await websocketManager.connect();
-        setConnectionStatus('connected');
-      } catch (error) {
-        console.error('[WebSocket] Connection failed:', error);
-        setConnectionStatus('error');
-        toast.error('Failed to connect to game server');
+    if (!onQueueTimeout) return undefined;
+
+    const unregister = websocketManager.onMessage((message) => {
+      if (message.type === 'queue_timeout') {
+        onQueueTimeout();
       }
-    };
+    });
     
-    connect();
-  }, [setConnectionStatus]);
+    return () => {
+      unregister();
+    };
+  }, [onQueueTimeout]);
 
   const findMatch = useCallback(async (mode: 'pvp' | 'bot', difficulty?: BotDifficulty) => {
+    try {
+      setConnectionStatus('connecting');
+      await websocketManager.connect();
+      setConnectionStatus('connected');
+    } catch (error) {
+      console.error('[WebSocket] Connection failed:', error);
+      setConnectionStatus('error');
+      toast.error('Failed to connect to game server');
+      return;
+    }
+
     setQueuing(mode, difficulty);
-    
-    // Ensure we are connected before sending
-    await websocketManager.connect();
     
     websocketManager.send({
       type: 'find_match',
       difficulty: mode === 'bot' ? (difficulty || 'easy') : '',
     });
-  }, [setQueuing]);
+  }, [setQueuing, setConnectionStatus]);
 
   const makeMove = useCallback((column: number) => {
     websocketManager.send({ type: 'make_move', column });
@@ -54,14 +63,11 @@ export const useGameSocket = (onGameStart?: (gameId: string) => void) => {
 
   const disconnect = useCallback(() => {
     websocketManager.disconnect();
-  }, []);
+    setConnectionStatus('disconnected');
+  }, [setConnectionStatus]);
 
   const sendMessage = useCallback((message: any) => {
     websocketManager.send(message);
-  }, []);
-
-  const connect = useCallback(() => {
-    return websocketManager.connect();
   }, []);
 
   return {
@@ -70,6 +76,5 @@ export const useGameSocket = (onGameStart?: (gameId: string) => void) => {
     surrender,
     disconnect,
     sendMessage,
-    connect,
   };
 };

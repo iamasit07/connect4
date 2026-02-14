@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion';
-import { Loader2, Bot } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { QUEUE_FUN_FACTS } from '@/lib/config';
 import { useState, useEffect } from 'react';
 import { BotDifficultyDialog } from './BotDifficultyDialog';
+import { WavyBackground } from '@/components/ui/wavy-background';
 import type { BotDifficulty } from '../types';
 
 interface QueueScreenProps {
@@ -12,48 +12,49 @@ interface QueueScreenProps {
 }
 
 export const QueueScreen = ({ onCancel, onPlayBot }: QueueScreenProps) => {
-  const [factIndex, setFactIndex] = useState(0);
   const [showBotDialog, setShowBotDialog] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setFactIndex((prev) => (prev + 1) % QUEUE_FUN_FACTS.length);
-    }, 5000);
-    return () => clearInterval(interval);
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 0) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
   }, []);
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+    // <WavyBackground 
+    //   className="max-w-4xl mx-auto flex flex-col items-center justify-center"
+    //   containerClassName="flex-1 h-full w-full items-center justify-center overflow-hidden"
+    //   backgroundFill="hsl(var(--background))"
+    //   waveOpacity={0.3}
+    //   colors={['#38bdf8', '#818cf8', '#c084fc', '#e879f9', '#22d3ee']}
+    // >
+    <div className="flex-1 h-full w-full flex flex-col items-center justify-center overflow-hidden bg-background">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="text-center max-w-md"
+        className="text-center w-full max-w-md relative z-10"
       >
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-          className="inline-block mb-6"
-        >
-          <Loader2 className="w-16 h-16 text-primary" />
-        </motion.div>
-
+        <div className="relative inline-flex items-center justify-center mb-10">
+          <div className="text-5xl font-bold font-mono tracking-wider">
+            {formatTime(timeLeft)}
+          </div>
+        </div>
         <h2 className="text-2xl font-bold mb-2">Finding Opponent...</h2>
         <p className="text-muted-foreground mb-8">
           Please wait while we match you with a worthy challenger
         </p>
-
-        <motion.div
-          key={factIndex}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          className="bg-card p-4 rounded-lg mb-8"
-        >
-          <p className="text-sm text-muted-foreground italic">
-            💡 {QUEUE_FUN_FACTS[factIndex]}
-          </p>
-        </motion.div>
-
         <div className="flex flex-col sm:flex-row gap-3">
           <Button variant="outline" onClick={onCancel} className="flex-1">
             Cancel
@@ -64,12 +65,12 @@ export const QueueScreen = ({ onCancel, onPlayBot }: QueueScreenProps) => {
           </Button>
         </div>
       </motion.div>
-
       <BotDifficultyDialog
         open={showBotDialog}
         onOpenChange={setShowBotDialog}
         onSelectDifficulty={onPlayBot}
       />
     </div>
+    // </WavyBackground>
   );
 };

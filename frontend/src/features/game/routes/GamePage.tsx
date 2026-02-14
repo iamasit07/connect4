@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 const GamePage = () => {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
-  const { makeMove, surrender, sendMessage } = useGameSocket(); // Don't call connect/disconnect
+  const { makeMove, surrender, disconnect, sendMessage } = useGameSocket();
   const { gameStatus, resetGame, setRematchStatus, gameMode, botDifficulty, gameId: storeGameId } = useGameStore();
 
   // Verify game ID matches
@@ -32,18 +32,17 @@ const GamePage = () => {
   };
 
   const handlePlayAgain = () => {
-    // For bot games, restart with same difficulty
     if (gameMode === 'bot' && botDifficulty) {
       resetGame();
-      navigate('/play', { state: { mode: 'bot', difficulty: botDifficulty } });
+      navigate('/play/bot', { state: { difficulty: botDifficulty } });
     } else {
-      // For PvP, go to queue
       resetGame();
       navigate('/play/queue', { state: { from: `/game/${gameId}` } });
     }
   };
 
   const handleGoHome = () => {
+    disconnect();
     resetGame();
     navigate('/dashboard');
   };
@@ -77,7 +76,7 @@ const GamePage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-2 sm:p-4">
       <GameResultBanner />
       <GameInfo />
       <Board onColumnClick={handleColumnClick} />
