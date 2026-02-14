@@ -105,7 +105,7 @@ func (h *OAuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		// --- CASE B: NEW USER (SETUP FLOW) ---
 
 		// Do NOT create user yet. Generate a Setup Token instead.
-		setupToken, err := auth.GenerateSetupToken(userInfo.Email, userInfo.ID)
+		setupToken, err := auth.GenerateSetupToken(userInfo.Email, userInfo.ID, userInfo.Name)
 		if err != nil {
 			log.Printf("[OAUTH] Failed to generate setup token: %v", err)
 			http.Redirect(w, r, config.AppConfig.FrontendURL+"/login?error=setup_failed", http.StatusTemporaryRedirect)
@@ -184,7 +184,7 @@ func (h *OAuthHandler) CompleteGoogleSignup(w http.ResponseWriter, r *http.Reque
 
 	// 4. Create User
 	hashedPwd, _ := auth.HashPassword(req.Password)
-	userID, err := h.UserRepo.CreateUser(req.Username, hashedPwd, claims.Email, claims.GoogleID)
+	userID, err := h.UserRepo.CreateUser(req.Username, claims.Name, hashedPwd, claims.Email, claims.GoogleID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -204,9 +204,18 @@ func (h *OAuthHandler) CompleteGoogleSignup(w http.ResponseWriter, r *http.Reque
 	token, _ := auth.GenerateJWT(userID, req.Username, sessionID)
 
 	httputil.SetAuthCookie(w, token)
+	email := claims.Email
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"token":    token,
-		"username": req.Username,
-		"user_id":  userID,
+		"token": token,
+		"user": map[string]interface{}{
+			"id":       userID,
+			"username": req.Username,
+			"name":     claims.Name,
+			"email":    email,
+			"rating":   1000,
+			"wins":     0,
+			"losses":   0,
+			"draws":    0,
+		},
 	})
 }

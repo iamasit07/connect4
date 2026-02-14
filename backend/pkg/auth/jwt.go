@@ -64,17 +64,19 @@ func ValidateJWT(tokenString string) (*Claims, error) {
 type SetupClaims struct {
 	Email    string `json:"email"`
 	GoogleID string `json:"google_id"`
+	Name     string `json:"name"`
 	jwt.RegisteredClaims
 }
 
 // GenerateSetupToken creates a short-lived token for the signup completion step
-func GenerateSetupToken(email, googleID string) (string, error) {
+func GenerateSetupToken(email, googleID, name string) (string, error) {
 	// Use Centralized Config
 	secret := config.AppConfig.JWTSecret
 	
 	claims := &SetupClaims{
 		Email:    email,
 		GoogleID: googleID,
+		Name:     name,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

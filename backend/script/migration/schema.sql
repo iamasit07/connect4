@@ -56,3 +56,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON user_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_active ON user_sessions(user_id, is_active) WHERE is_active = TRUE;
 CREATE INDEX IF NOT EXISTS idx_sessions_cleanup ON user_sessions(created_at) WHERE is_active = FALSE;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_session ON user_sessions(user_id) WHERE is_active = TRUE;
+
+-- Add rating and games_drawn columns (idempotent)
+ALTER TABLE players ADD COLUMN IF NOT EXISTS rating INT DEFAULT 1000;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS games_drawn INT DEFAULT 0;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS name VARCHAR(100) DEFAULT '';

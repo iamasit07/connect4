@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
 )
@@ -35,6 +34,7 @@ func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := r.Context().Value("user_id").(int64)
 	if !ok {
+		log.Printf("[HISTORY] Unauthorized: context value 'user_id' is missing or wrong type. Value: %v, Type: %T", r.Context().Value("user_id"), r.Context().Value("user_id"))
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -46,10 +46,10 @@ func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[HISTORY] Found %d games for user %d", len(history), userID)
+	log.Printf("[HISTORY] Found %d games for user %d", len(rawHistory), userID)
 
-	response := make([]historyResponse, 0, len(history))
-	for _, game := range history {
+	response := make([]historyResponse, 0, len(rawHistory))
+	for _, game := range rawHistory {
 		opponent := game.Player2Username
 		if game.Player1ID != userID {
 			opponent = game.Player1Username

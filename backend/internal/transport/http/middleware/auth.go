@@ -2,8 +2,8 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
-	"time"
 
 	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
 	"github.com/iamasit07/4-in-a-row/backend/pkg/auth"
@@ -24,36 +24,32 @@ func AuthMiddleware(next http.HandlerFunc, sessionRepo *postgres.SessionRepo) ht
 		// 2. Validate JWT Signature (Stateless check)
 		claims, err := auth.ValidateJWT(tokenString)
 		if err != nil {
+			log.Printf("[AUTH] Invalid token for %s: %v", r.URL.Path, err)
 			httputil.ClearAuthCookie(w)
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		// 3. Validate Session in DB (Stateful check - The Logic You Were Missing!)
-		// This replaces utils.ValidateJWTWithSession
+		// 3. Validate Session in DB (Stateful check)
 		session, err := sessionRepo.GetSessionByID(claims.SessionID)
 		if err != nil || session == nil {
+			log.Printf("[AUTH] Session invalid for user %d (session %s): %v", claims.UserID, claims.SessionID, err)
 			httputil.ClearAuthCookie(w)
 			http.Error(w, "Session invalid", http.StatusUnauthorized)
 			return
 		}
 
-		// Check if session is explicitly deactivated (e.g. logout/ban)
+		// Check if session is explicitly deactivated
 		if !session.IsActive {
+			log.Printf("[AUTH] Session inactive for user %d", claims.UserID)
 			httputil.ClearAuthCookie(w)
 			http.Error(w, "Session logged out", http.StatusUnauthorized)
 			return
 		}
+        
+        log.Printf("[AUTH] Success for %s (User: %d)", r.URL.Path, claims.UserID)
 
-		// Check expiry
-		if time.Now().After(session.ExpiresAt) {
-			httputil.ClearAuthCookie(w)
-			http.Error(w, "Session expired", http.StatusUnauthorized)
-			return
-		}
-
-		// 4. Update Last Activity (Optional, but good for tracking)
-		// Run in background to not block request
+		// 4. Update Last Activity
 		go sessionRepo.UpdateSessionActivity(claims.SessionID)
 
 		// 5. Pass UserID to next handler

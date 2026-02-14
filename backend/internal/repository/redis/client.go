@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/iamasit07/4-in-a-row/backend/internal/config"
 	"github.com/redis/go-redis/v9"
@@ -47,4 +48,29 @@ func CloseRedis() error {
 		return RedisClient.Close()
 	}
 	return nil
+}
+
+// RedisCache acts as a wrapper around redis.Client to implement CacheRepository interface
+type RedisCache struct {
+	client *redis.Client
+}
+
+// NewRedisCache creates a new RedisCache instance
+func NewRedisCache(client *redis.Client) *RedisCache {
+	return &RedisCache{client: client}
+}
+
+// Set stores a key-value pair with expiration
+func (r *RedisCache) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	return r.client.Set(ctx, key, value, expiration).Err()
+}
+
+// Get retrieves a value by key
+func (r *RedisCache) Get(ctx context.Context, key string) (string, error) {
+	return r.client.Get(ctx, key).Result()
+}
+
+// Del deletes keys
+func (r *RedisCache) Del(ctx context.Context, keys ...string) error {
+	return r.client.Del(ctx, keys...).Err()
 }

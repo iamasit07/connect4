@@ -108,13 +108,6 @@ func (h *Handler) handleConnection(conn *websocket.Conn) {
 		log.Printf("[WS] Connection initialized for user: %s (ID: %d)", username, userID)
 
 		h.ConnManager.AddConnection(userID, conn, username)
-
-		// Check for existing active game to reconnect
-		activeGame, exists := h.SessionManager.GetSessionByUserID(userID)
-		if exists {
-			log.Printf("[WS] Found active game for user %s: %s", username, activeGame.GameID)
-			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "reconnect_found", GameID: activeGame.GameID})
-		}
 	} else {
 		log.Printf("[WS] Missing initialization or token")
 		conn.Close()
@@ -213,10 +206,6 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 	switch msg.Type {
 	case "find_match":
 		difficulty := msg.Difficulty
-		// Default to medium if not specified
-		if difficulty == "" {
-			difficulty = "medium"
-		}
 
 		if h.SessionManager.HasActiveGame(userID) {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "You are already in a game"})
@@ -246,14 +235,6 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 		if err != nil {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: err.Error()})
 		}
-
-	case "reconnect":
-		gameSession, exists := h.SessionManager.GetSessionByUserID(userID)
-		if !exists {
-			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "No active game found"})
-			return
-		}
-		gameSession.HandleReconnect(userID, h.ConnManager)
 
 	case "request_rematch":
 		gameSession, exists := h.SessionManager.GetSessionByUserID(userID)
