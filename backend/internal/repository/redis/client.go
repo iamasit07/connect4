@@ -12,13 +12,11 @@ import (
 var RedisClient *redis.Client
 var redisEnabled bool
 
-	// InitRedis initializes Redis connection
 func InitRedis() error {
 	url := config.GetEnv("REDIS_URL", "localhost:6379")
 	
 	opts, err := redis.ParseURL(url)
 	if err != nil {
-		// If parsing fails (e.g. simple host:port), try using it as Addr directly
 		opts = &redis.Options{
 			Addr: url,
 			Password: config.GetEnv("REDIS_PASSWORD", ""),
@@ -29,7 +27,7 @@ func InitRedis() error {
 	if err != nil {
 		log.Printf("[REDIS] Warning: Could not connect to Redis: %v. Falling back to PostgreSQL only.", err)
 		redisEnabled = false
-		return nil // Don't fail startup if Redis is unavailable
+		return nil
 	}
 
 	redisEnabled = true

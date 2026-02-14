@@ -1,4 +1,11 @@
 const getBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (!isLocal) return '';
+  }
+
+  if (import.meta.env.PROD) return '';
+  
   if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
   return '';
 };
