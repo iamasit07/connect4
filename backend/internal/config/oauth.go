@@ -52,7 +52,6 @@ func LoadOAuthConfig(frontendURL string) *OAuthConfig {
 	}
 }
 
-// GetGoogleUserInfo fetches user details from Google API
 func GetGoogleUserInfo(accessToken string) (*GoogleUser, error) {
 	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
 	if err != nil {

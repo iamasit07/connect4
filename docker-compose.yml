@@ -31,11 +31,12 @@ services:
     env_file:
       - .env
     environment:
-      - REDIS_URL=redis:6379
+      - REDIS_URL=redis://redis:6379
     networks:
       - app-network
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
 
   # Redis: Standard Redis image
   redis:
@@ -47,6 +48,11 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks:
       - app-network
 

@@ -14,17 +14,21 @@ var redisEnabled bool
 
 func InitRedis() error {
 	url := config.GetEnv("REDIS_URL", "localhost:6379")
-	
+
 	opts, err := redis.ParseURL(url)
 	if err != nil {
 		opts = &redis.Options{
-			Addr: url,
+			Addr:     url,
 			Password: config.GetEnv("REDIS_PASSWORD", ""),
 		}
 	}
 
 	RedisClient = redis.NewClient(opts)
-	if err != nil {
+
+	// Verify the connection with a Ping
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := RedisClient.Ping(ctx).Err(); err != nil {
 		log.Printf("[REDIS] Warning: Could not connect to Redis: %v. Falling back to PostgreSQL only.", err)
 		redisEnabled = false
 		return nil

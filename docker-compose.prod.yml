@@ -11,6 +11,7 @@ services:
       - VITE_PROXY_TARGET=http://backend:8080
     networks:
       - app-network
+    restart: always
     depends_on:
       - backend
 
@@ -25,11 +26,13 @@ services:
     env_file:
       - .env
     environment:
-      - REDIS_URL=redis:6379
+      - REDIS_URL=redis://redis:6379
     networks:
       - app-network
+    restart: always
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
 
   # Redis: Same as dev
   redis:
@@ -39,6 +42,11 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks:
       - app-network
 
