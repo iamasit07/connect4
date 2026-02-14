@@ -33,14 +33,13 @@ export const QueueScreen = ({ onCancel, onPlayBot }: QueueScreenProps) => {
   };
 
   return (
-    // <WavyBackground 
-    //   className="max-w-4xl mx-auto flex flex-col items-center justify-center"
-    //   containerClassName="flex-1 h-full w-full items-center justify-center overflow-hidden"
-    //   backgroundFill="hsl(var(--background))"
-    //   waveOpacity={0.3}
-    //   colors={['#38bdf8', '#818cf8', '#c084fc', '#e879f9', '#22d3ee']}
-    // >
-    <div className="flex-1 h-full w-full flex flex-col items-center justify-center overflow-hidden bg-background">
+    <WavyBackground 
+      className="max-w-4xl mx-auto flex flex-col items-center justify-center"
+      containerClassName="flex-1 h-full w-full items-center justify-center overflow-hidden"
+      backgroundFill="hsl(var(--background))"
+      waveOpacity={0.3}
+      colors={['#38bdf8', '#818cf8', '#c084fc', '#e879f9', '#22d3ee']}
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -70,7 +69,6 @@ export const QueueScreen = ({ onCancel, onPlayBot }: QueueScreenProps) => {
         onOpenChange={setShowBotDialog}
         onSelectDifficulty={onPlayBot}
       />
-    </div>
-    // </WavyBackground>
+    </WavyBackground>
   );
 };
