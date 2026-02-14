@@ -25,15 +25,16 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api
 
 # Stage 3: Final Image
 FROM alpine:latest
-WORKDIR /root/
+WORKDIR /app
 # Install ca-certificates for external API calls (e.g. Google OAuth)
 RUN apk --no-cache add ca-certificates
 
 # Copy Binary
 COPY --from=backend_builder /app/backend/main .
+# Copy Migrations
+COPY --from=backend_builder /app/backend/script ./script
 # Copy Frontend Build to static directory
 COPY --from=frontend_builder /app/frontend/dist ./static
-# Copy .env example if needed (usually handled by Render env vars)
 
 EXPOSE 8080
 CMD ["./main"]

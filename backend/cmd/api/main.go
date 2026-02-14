@@ -27,15 +27,13 @@ import (
 )
 
 func main() {
-	// 1. Load Environment Variables
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
+		if err := godotenv.Load("../.env"); err != nil {
+			log.Println("No .env file found")
+		}
 	}
 
-	// 2. Load Config
 	cfg := config.LoadConfig()
-
-	// 2b. Database Connection with Pooling
 	db, err := sql.Open("postgres", cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)

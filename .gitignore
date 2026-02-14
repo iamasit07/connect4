@@ -93,6 +93,7 @@ lerna-debug.log*
 .AppleDouble
 .LSOverride
 ._*
+.gemini
 
 # Windows
 Thumbs.db

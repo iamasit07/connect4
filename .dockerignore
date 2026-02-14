@@ -1,0 +1,11 @@
+.git
+.gitignore
+.dockerignore
+README.md
+docker-compose*.yml
+frontend/node_modules
+frontend/dist
+backend/tmp
+backend/main
+**/node_modules
+**/dist

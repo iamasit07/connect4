@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api
 # Run Stage
 FROM alpine:latest
 
-WORKDIR /root/
+WORKDIR /app
 
 # Copy the pre-built binary file from the previous stage
 COPY --from=builder /app/main .

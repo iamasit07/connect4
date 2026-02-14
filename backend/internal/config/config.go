@@ -25,10 +25,7 @@ type Config struct {
 var AppConfig *Config
 
 func LoadConfig() *Config {
-	// Server Config
 	port := GetEnv("PORT", "8080")
-
-	// Game Config
 	matchmakingTimeoutSec := GetEnvAsInt("MATCHMAKING_TIMEOUT_SECONDS", 300)
 	botToken := GetEnv("BOT_TOKEN", "tkn_bot_default")
 	
