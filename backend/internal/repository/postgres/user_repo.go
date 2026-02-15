@@ -45,15 +45,15 @@ func (u *User) UserResponse() map[string]interface{} {
 		email = u.Email.String
 	}
 	return map[string]interface{}{
-		"id":        u.ID,
-		"username":  u.Username,
-		"name":      u.Name,
+		"id":         u.ID,
+		"username":   u.Username,
+		"name":       u.Name,
 		"avatar_url": u.AvatarURL,
-		"email":     email,
-		"rating":    u.Rating,
-		"wins":      u.GamesWon,
-		"losses":    u.GamesPlayed - u.GamesWon - u.GamesDrawn,
-		"draws":     u.GamesDrawn,
+		"email":      email,
+		"rating":     u.Rating,
+		"wins":       u.GamesWon,
+		"losses":     u.GamesPlayed - u.GamesWon - u.GamesDrawn,
+		"draws":      u.GamesDrawn,
 	}
 }
 
@@ -113,7 +113,7 @@ const userSelectFields = `id, username, COALESCE(name, '') as name, COALESCE(ava
 
 // GetUserByUsername retrieves a user by username
 func (r *UserRepo) GetUserByUsername(username string) (*User, error) {
-	query := `SELECT ` + userSelectFields + ` FROM players WHERE username = $1;`
+	query := `SELECT ` + userSelectFields + ` FROM players WHERE username = $1::text;`
 	user, err := scanUser(r.DB.QueryRow(query, username))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %v", err)
@@ -123,7 +123,7 @@ func (r *UserRepo) GetUserByUsername(username string) (*User, error) {
 
 // GetUserByEmail retrieves a user by email
 func (r *UserRepo) GetUserByEmail(email string) (*User, error) {
-	query := `SELECT ` + userSelectFields + ` FROM players WHERE email = $1;`
+	query := `SELECT ` + userSelectFields + ` FROM players WHERE email = $1::text;`
 	user, err := scanUser(r.DB.QueryRow(query, email))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %v", err)
@@ -133,7 +133,7 @@ func (r *UserRepo) GetUserByEmail(email string) (*User, error) {
 
 // GetUserByIdentifier retrieves a user by username OR email
 func (r *UserRepo) GetUserByIdentifier(identifier string) (*User, error) {
-	query := `SELECT ` + userSelectFields + ` FROM players WHERE username = $1 OR email = $1;`
+	query := `SELECT ` + userSelectFields + ` FROM players WHERE username = $1::text OR email = $1::text;`
 	user, err := scanUser(r.DB.QueryRow(query, identifier))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %v", err)
@@ -157,7 +157,7 @@ func (r *UserRepo) UpdateUserGoogleID(email, googleID string) error {
 
 // GetUserByGoogleID retrieves a user by Google ID
 func (r *UserRepo) GetUserByGoogleID(googleID string) (*User, error) {
-	query := `SELECT ` + userSelectFields + ` FROM players WHERE google_id = $1;`
+	query := `SELECT ` + userSelectFields + ` FROM players WHERE google_id = $1::text;`
 	user, err := scanUser(r.DB.QueryRow(query, googleID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %v", err)

@@ -88,7 +88,7 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 
 	query := `
 	INSERT INTO game (game_id, player1_id, player1_username, player2_id, player2_username, winner_id, winner_username, reason, total_moves, duration_seconds, created_at, finished_at, board_state)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	VALUES ($1::text, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	ON CONFLICT (game_id) DO UPDATE SET
 		winner_id = EXCLUDED.winner_id,
 		winner_username = EXCLUDED.winner_username,
@@ -156,7 +156,7 @@ func (r *GameRepo) GetGameByID(gameID string) (*GameResult, error) {
 	       winner_id, winner_username, reason, total_moves, duration_seconds, 
 	       created_at, finished_at
 	FROM game 
-	WHERE game_id = $1;
+	WHERE game_id = $1::text;
 	`
 	
 	var result GameResult
@@ -261,7 +261,7 @@ func (r *GameRepo) GetUserGameHistory(userID int64) ([]GameResult, error) {
 
 // GetGameBoard retrieves the board state for a game from the database
 func (r *GameRepo) GetGameBoard(gameID string) ([][]int, error) {
-	query := `SELECT board_state FROM game WHERE game_id = $1;`
+	query := `SELECT board_state FROM game WHERE game_id = $1::text;`
 	
 	var boardJSON []byte
 	err := r.DB.QueryRow(query, gameID).Scan(&boardJSON)
