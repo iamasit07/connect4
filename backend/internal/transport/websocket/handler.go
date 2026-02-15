@@ -207,10 +207,9 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 	case "find_match":
 		difficulty := msg.Difficulty
 
-		if h.SessionManager.HasActiveGame(userID) {
-			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "You are already in a game"})
-			return
-		}
+		// Clean up any existing game session before joining queue
+		// If game is active, it's abandoned. If finished (rematch window), it's cleaned up.
+		h.SessionManager.ForceCleanupForUser(userID, h.ConnManager)
 
 		username, _ := h.ConnManager.GetUsername(userID)
 		err := h.Matchmaking.AddPlayerToQueue(userID, username, difficulty)

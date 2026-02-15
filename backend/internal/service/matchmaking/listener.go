@@ -18,13 +18,6 @@ func MatchMakingListener(queue *MatchmakingQueue, cm game.ConnectionManagerInter
 		log.Printf("[MATCHMAKING] Match found: %s (ID: %d) vs %s (ID: %v)",
 			player1Username, player1ID, player2Username, player2ID)
 
-		// Terminate any existing sessions for these users to prevent jagged state
-		sm.TerminateSessionForUser(player1ID, cm)
-		
-		if player2ID != nil {
-			sm.TerminateSessionForUser(*player2ID, cm)
-		}
-
 		// CreateSession will handle sending game_start messages
 		session := sm.CreateSession(player1ID, player1Username, player2ID, player2Username, match.BotDifficulty, cm)
 

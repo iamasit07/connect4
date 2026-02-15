@@ -22,12 +22,13 @@ type GameSession struct {
 	Reason              string
 	CreatedAt           time.Time
 	FinishedAt          time.Time
-	BotDifficulty       string // "easy", "medium", "hard"
+	BotDifficulty       string      // "easy", "medium", "hard"
 	PostGameTimer       *time.Timer // 30-second window for rematch after game ends
 	RematchRequester    *int64      // userID of player who requested rematch
 	RematchRequestTimer *time.Timer // 10-second window to accept rematch request
 	mu                  sync.Mutex
 	repo                GameRepository
+	sessionManager      *SessionManager
 }
 
 type ConnectionManagerInterface interface {
@@ -59,7 +60,7 @@ func (sm *SessionManager) CreateSession(player1ID int64, player1Username string,
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	session := NewGameSession(player1ID, player1Username, player2ID, player2Username, botDifficulty, conn, sm.repo)
+	session := NewGameSession(player1ID, player1Username, player2ID, player2Username, botDifficulty, conn, sm.repo, sm)
 	gameID := session.GameID
 	sm.Session[gameID] = session
 	sm.UserToGame[player1ID] = gameID
@@ -139,46 +140,39 @@ func (sm *SessionManager) removeSessionLocked(gameID string) error {
 	return nil
 }
 
-func (sm *SessionManager) HasActiveGame(userID int64) bool {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-
-	gameID, exists := sm.UserToGame[userID]
+func (sm *SessionManager) ForceCleanupForUser(userID int64, conn ConnectionManagerInterface) {
+	session, exists := sm.GetSessionByUserID(userID)
 	if !exists {
-		return false
-	}
-
-	session, exists := sm.Session[gameID]
-	if !exists {
-		return false
-	}
-
-	return !session.Game.IsFinished()
-}
-
-func (sm *SessionManager) TerminateSessionForUser(userID int64, conn ConnectionManagerInterface) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	// Need to look up session manually since getSessionByUserIDLocked logic relies on UserToGame map
-	gameID, ok := sm.UserToGame[userID]
-	if !ok {
-		return
-	}
-	session, ok := sm.Session[gameID]
-	if !ok {
 		return
 	}
 
-	log.Printf("[SESSION] Force terminating session %s for user %d", session.GameID, userID)
-	
-	// Notify users
-	conn.SendMessage(session.Player1ID, domain.ServerMessage{Type: "game_ended", Reason: "Force termination"})
-	if session.Player2ID != nil {
-		conn.SendMessage(*session.Player2ID, domain.ServerMessage{Type: "game_ended", Reason: "Force termination"})
+	gameID := session.GameID
+
+	session.mu.Lock()
+	gameFinished := session.Game.IsFinished()
+
+	if gameFinished {
+		// Game is finished but session lingers (rematch window) — clean up timers and connections
+		log.Printf("[SESSION] Cleaning up finished session %s for user %d (joining queue)", gameID, userID)
+		if session.PostGameTimer != nil {
+			session.PostGameTimer.Stop()
+			session.PostGameTimer = nil
+		}
+		if session.RematchRequestTimer != nil {
+			session.RematchRequestTimer.Stop()
+			session.RematchRequestTimer = nil
+		}
+		session.RematchRequester = nil
+		session.cleanupConnections(conn)
+		session.mu.Unlock()
+	} else {
+		// Game is still active — abandon it (saves to DB, notifies opponent)
+		log.Printf("[SESSION] Abandoning active session %s for user %d (joining queue)", gameID, userID)
+		session.mu.Unlock()
+		session.TerminateSessionByAbandonment(userID, conn)
 	}
-	
-	sm.removeSessionLocked(session.GameID)
+
+	sm.RemoveSession(gameID)
 }
 
 func (gs *GameSession) GetPlayerID(userID int64) (domain.PlayerID, bool) {
@@ -253,7 +247,7 @@ func (gs *GameSession) saveGameAsync(gameID string, p1ID int64, p1User string,
 	}()
 }
 
-func NewGameSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, botDifficulty string, conn ConnectionManagerInterface, repo GameRepository) *GameSession {
+func NewGameSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, botDifficulty string, conn ConnectionManagerInterface, repo GameRepository, sm *SessionManager) *GameSession {
 	gameID := uid.GenerateGameID()
 	newGame := (&domain.Game{}).NewGame()
 
@@ -275,6 +269,7 @@ func NewGameSession(player1ID int64, player1Username string, player2ID *int64, p
 		CreatedAt:       time.Now(),
 		mu:              sync.Mutex{},
 		repo:            repo,
+		sessionManager:  sm,
 	}
 
 	conn.SendMessage(player1ID, domain.ServerMessage{
@@ -328,7 +323,7 @@ func (sm *SessionManager) CleanupOldSessions() {
 			}
 		}
 	}
-	
+
 	if count > 0 {
 		log.Printf("[SESSION] Memory cleanup: Removed %d stale game sessions", count)
 	}
@@ -452,7 +447,7 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 	if !gs.IsBot() && gs.Player2ID != nil {
 		conn.SendMessage(*gs.Player2ID, moveMadeMsg)
 	}
-	
+
 	// TRIGGER BOT MOVE if applicable
 	if gs.IsBot() && gs.Game.CurrentPlayer == domain.Player2 {
 		go func() {
@@ -575,18 +570,20 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 
 func (gs *GameSession) HandleDisconnect(userID int64, conn ConnectionManagerInterface, sessionManager *SessionManager) error {
 	gs.mu.Lock()
-	defer gs.mu.Unlock()
 
 	// If game is already finished, just clean up
 	if gs.Game.IsFinished() {
 		if gs.RematchRequester != nil {
 			gs.CancelRematchRequest(conn)
-			gs.cleanupConnections(conn)
-			if gs.PostGameTimer != nil {
-				gs.PostGameTimer.Stop()
-				gs.PostGameTimer = nil
-			}
 		}
+		if gs.PostGameTimer != nil {
+			gs.PostGameTimer.Stop()
+			gs.PostGameTimer = nil
+		}
+		gs.cleanupConnections(conn)
+		gameID := gs.GameID
+		gs.mu.Unlock()
+		sessionManager.RemoveSession(gameID)
 		return nil
 	}
 
@@ -618,11 +615,12 @@ func (gs *GameSession) HandleDisconnect(userID int64, conn ConnectionManagerInte
 		gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt, convertBoardToInts(gs.Game.Board))
 
 	gs.cleanupConnections(conn)
-	sessionManager.RemoveSession(gs.GameID)
+	gameID := gs.GameID
+	gs.mu.Unlock()
+	sessionManager.RemoveSession(gameID)
 
 	return nil
 }
-
 
 func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, conn ConnectionManagerInterface) error {
 	gs.mu.Lock()
@@ -665,7 +663,6 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 func (gs *GameSession) StartPostGameTimer(conn ConnectionManagerInterface) {
 	gs.PostGameTimer = time.AfterFunc(30*time.Second, func() {
 		gs.mu.Lock()
-		defer gs.mu.Unlock()
 
 		log.Printf("[POST_GAME] 30-second window expired for game %s, closing connections", gs.GameID)
 
@@ -677,6 +674,14 @@ func (gs *GameSession) StartPostGameTimer(conn ConnectionManagerInterface) {
 
 		// Clean up connections silently
 		gs.cleanupConnections(conn)
+		gameID := gs.GameID
+		sm := gs.sessionManager
+		gs.mu.Unlock()
+
+		// Remove session from SessionManager so UserToGame doesn't linger
+		if sm != nil {
+			sm.RemoveSession(gameID)
+		}
 	})
 	log.Printf("[POST_GAME] Started 30-second post-game timer for game %s", gs.GameID)
 }
@@ -730,7 +735,6 @@ func (gs *GameSession) HandleRematchRequest(userID int64, conn ConnectionManager
 	// Start 10-second timer for acceptance
 	gs.RematchRequestTimer = time.AfterFunc(10*time.Second, func() {
 		gs.mu.Lock()
-		defer gs.mu.Unlock()
 
 		log.Printf("[REMATCH] Request timeout for game %s", gs.GameID)
 
@@ -757,6 +761,12 @@ func (gs *GameSession) HandleRematchRequest(userID int64, conn ConnectionManager
 			gs.PostGameTimer.Stop()
 			gs.PostGameTimer = nil
 		}
+
+		gameID := gs.GameID
+		gs.mu.Unlock()
+
+		// Remove session so UserToGame doesn't linger
+		sessionManager.RemoveSession(gameID)
 	})
 
 	return nil
@@ -765,21 +775,23 @@ func (gs *GameSession) HandleRematchRequest(userID int64, conn ConnectionManager
 // HandleRematchResponse processes accept/decline response to a rematch request
 func (gs *GameSession) HandleRematchResponse(userID int64, response string, conn ConnectionManagerInterface, sessionManager *SessionManager) error {
 	gs.mu.Lock()
-	defer gs.mu.Unlock()
 
 	// Verify there's a pending rematch request
 	if gs.RematchRequester == nil {
+		gs.mu.Unlock()
 		return fmt.Errorf("no pending rematch request")
 	}
 
 	// Verify responder is the opponent (not the requester)
 	if userID == *gs.RematchRequester {
+		gs.mu.Unlock()
 		return fmt.Errorf("cannot respond to your own rematch request")
 	}
 
 	// Verify responder is a player in this game
 	_, isPlayer := gs.GetPlayerID(userID)
 	if !isPlayer {
+		gs.mu.Unlock()
 		return fmt.Errorf("you are not a player in this game")
 	}
 
@@ -806,6 +818,7 @@ func (gs *GameSession) HandleRematchResponse(userID int64, response string, conn
 			Message: "Rematch accepted",
 		})
 
+		gs.mu.Unlock()
 		return gs.CreateRematchGame(conn, sessionManager)
 	} else {
 		log.Printf("[REMATCH] %s (ID: %d) declined rematch in game %s", responderUsername, userID, gs.GameID)
@@ -817,7 +830,7 @@ func (gs *GameSession) HandleRematchResponse(userID int64, response string, conn
 			Message:      "Rematch request declined",
 			AllowRematch: &allowRematch,
 		})
-		
+
 		conn.SendMessage(userID, domain.ServerMessage{
 			Type:         "rematch_declined", // Notify decliner too so UI updates
 			Message:      "Rematch request declined",
@@ -826,15 +839,19 @@ func (gs *GameSession) HandleRematchResponse(userID int64, response string, conn
 
 		gs.RematchRequester = nil
 		gs.cleanupConnections(conn)
-		
+
 		// Stop post-game timer
 		if gs.PostGameTimer != nil {
 			gs.PostGameTimer.Stop()
 			gs.PostGameTimer = nil
 		}
-	}
 
-	return nil
+		// Remove session so UserToGame doesn't linger
+		gameID := gs.GameID
+		gs.mu.Unlock()
+		sessionManager.RemoveSession(gameID)
+		return nil
+	}
 }
 
 func (gs *GameSession) CancelRematchRequest(conn ConnectionManagerInterface) {
@@ -882,9 +899,9 @@ func (gs *GameSession) CreateRematchGame(conn ConnectionManagerInterface, sessio
 	newP1Username := gs.Player1Username
 	newP2ID := gs.Player2ID
 	newP2Username := gs.Player2Username
-	
+
 	sessionManager.RemoveSession(gs.GameID)
 	sessionManager.CreateSession(newP1ID, newP1Username, newP2ID, newP2Username, gs.BotDifficulty, conn)
-	
+
 	return nil
 }

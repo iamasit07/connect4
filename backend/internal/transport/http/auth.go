@@ -3,8 +3,11 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,23 +22,34 @@ type Disconnector interface {
 	DisconnectUser(userID int64, reason string)
 }
 
+type SessionInvalidator interface {
+	InvalidateSession(sessionID string) error
+}
+
 type AuthHandler struct {
 	UserRepo    *postgres.UserRepo
 	SessionRepo *postgres.SessionRepo
 	ConnManager Disconnector
 	Cache       session.CacheRepository
+	AuthService SessionInvalidator
 }
 
-func NewAuthHandler(userRepo *postgres.UserRepo, sessionRepo *postgres.SessionRepo, cm Disconnector, cache session.CacheRepository) *AuthHandler {
+func NewAuthHandler(userRepo *postgres.UserRepo, sessionRepo *postgres.SessionRepo, cm Disconnector, cache session.CacheRepository, authSvc SessionInvalidator) *AuthHandler {
 	return &AuthHandler{
 		UserRepo:    userRepo,
 		SessionRepo: sessionRepo,
 		ConnManager: cm,
 		Cache:       cache,
+		AuthService: authSvc,
 	}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var req struct {
 		Username string `json:"username"`
 		Name     string `json:"name"`
@@ -88,7 +102,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Name = strings.TrimSpace(req.Name)
-	userID, err := h.UserRepo.CreateUser(req.Username, req.Name, hashedPwd, req.Email, "")
+	userID, err := h.UserRepo.CreateUser(req.Username, req.Name, hashedPwd, req.Email, "", "")
 	if err != nil {
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
@@ -117,19 +131,25 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"token": token,
 		"user": map[string]interface{}{
-			"id":       userID,
-			"username": req.Username,
-			"name":     req.Name,
-			"email":    req.Email,
-			"rating":   1000,
-			"wins":     0,
-			"losses":   0,
-			"draws":    0,
+			"id":         userID,
+			"username":   req.Username,
+			"name":       req.Name,
+			"avatar_url": "",
+			"email":      req.Email,
+			"rating":     1000,
+			"wins":       0,
+			"losses":     0,
+			"draws":      0,
 		},
 	})
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -186,12 +206,29 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Invalidate session server-side (DB + Redis cache)
+	if sessionID, ok := r.Context().Value("session_id").(string); ok && sessionID != "" {
+		if err := h.AuthService.InvalidateSession(sessionID); err != nil {
+			log.Printf("[AUTH] Failed to invalidate session %s on logout: %v", sessionID, err)
+		}
+	}
+
 	httputil.ClearAuthCookie(w)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Logged out"))
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	userID, ok := r.Context().Value("user_id").(int64)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -234,7 +271,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[AUTH] /me: Returning token for user %d, token length: %d", userID, len(token))
 
 	response := user.UserResponse()
-	
+
 	// 4. Update Cache
 	if h.Cache != nil {
 		cacheKey := fmt.Sprintf("user_profile:%d", userID)
@@ -292,11 +329,141 @@ func (h *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	// Invalidate cache on update
 	if h.Cache != nil {
-        h.Cache.Del(r.Context(), fmt.Sprintf("user_profile:%d", userID))
-    }
+		h.Cache.Del(r.Context(), fmt.Sprintf("user_profile:%d", userID))
+	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"user": user.UserResponse(),
+	})
+}
+
+const maxAvatarSize = 2 * 1024 * 1024 // 2MB
+
+var allowedImageTypes = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/webp": ".webp",
+}
+
+func (h *AuthHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := r.Context().Value("user_id").(int64)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Limit request body size
+	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarSize)
+
+	if err := r.ParseMultipartForm(maxAvatarSize); err != nil {
+		http.Error(w, "File too large (max 2MB)", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("avatar")
+	if err != nil {
+		http.Error(w, "No file provided", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Validate content type
+	contentType := header.Header.Get("Content-Type")
+	ext, ok := allowedImageTypes[contentType]
+	if !ok {
+		http.Error(w, "Invalid file type. Allowed: JPEG, PNG, WebP", http.StatusBadRequest)
+		return
+	}
+
+	// Create uploads directory
+	uploadDir := "./uploads/avatars"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		log.Printf("[AVATAR] Failed to create upload dir: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate unique filename
+	filename := fmt.Sprintf("%d_%d%s", userID, time.Now().UnixNano(), ext)
+	filePath := filepath.Join(uploadDir, filename)
+
+	// Save file
+	dst, err := os.Create(filePath)
+	if err != nil {
+		log.Printf("[AVATAR] Failed to create file: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		log.Printf("[AVATAR] Failed to save file: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Delete old avatar file if it's a local upload
+	oldUser, _ := h.UserRepo.GetUserByID(userID)
+	if oldUser != nil && oldUser.AvatarURL != "" && strings.HasPrefix(oldUser.AvatarURL, "/uploads/") {
+		oldPath := "." + oldUser.AvatarURL
+		os.Remove(oldPath)
+	}
+
+	// Save URL to database
+	avatarURL := "/uploads/avatars/" + filename
+	if err := h.UserRepo.UpdateAvatar(userID, avatarURL); err != nil {
+		log.Printf("[AVATAR] Failed to update avatar in DB: %v", err)
+		http.Error(w, "Failed to update avatar", http.StatusInternalServerError)
+		return
+	}
+
+	// Invalidate profile cache
+	if h.Cache != nil {
+		h.Cache.Del(r.Context(), fmt.Sprintf("user_profile:%d", userID))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"avatar_url": avatarURL,
+	})
+}
+
+func (h *AuthHandler) RemoveAvatar(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := r.Context().Value("user_id").(int64)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Delete old avatar file if local
+	user, _ := h.UserRepo.GetUserByID(userID)
+	if user != nil && user.AvatarURL != "" && strings.HasPrefix(user.AvatarURL, "/uploads/") {
+		os.Remove("." + user.AvatarURL)
+	}
+
+	if err := h.UserRepo.UpdateAvatar(userID, ""); err != nil {
+		http.Error(w, "Failed to remove avatar", http.StatusInternalServerError)
+		return
+	}
+
+	// Invalidate profile cache
+	if h.Cache != nil {
+		h.Cache.Del(r.Context(), fmt.Sprintf("user_profile:%d", userID))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"avatar_url": "",
 	})
 }
 

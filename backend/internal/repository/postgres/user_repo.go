@@ -3,7 +3,6 @@ package postgres
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 )
 
@@ -19,6 +18,7 @@ type User struct {
 	ID           int64
 	Username     string
 	Name         string
+	AvatarURL    string
 	Email        sql.NullString
 	GoogleID     sql.NullString
 	IsVerified   bool
@@ -45,19 +45,20 @@ func (u *User) UserResponse() map[string]interface{} {
 		email = u.Email.String
 	}
 	return map[string]interface{}{
-		"id":       u.ID,
-		"username": u.Username,
-		"name":     u.Name,
-		"email":    email,
-		"rating":   u.Rating,
-		"wins":     u.GamesWon,
-		"losses":   u.GamesPlayed - u.GamesWon - u.GamesDrawn,
-		"draws":    u.GamesDrawn,
+		"id":        u.ID,
+		"username":  u.Username,
+		"name":      u.Name,
+		"avatar_url": u.AvatarURL,
+		"email":     email,
+		"rating":    u.Rating,
+		"wins":      u.GamesWon,
+		"losses":    u.GamesPlayed - u.GamesWon - u.GamesDrawn,
+		"draws":     u.GamesDrawn,
 	}
 }
 
-// CreateUser creates a new user with hashed password and optional email/google_id
-func (r *UserRepo) CreateUser(username, name, passwordHash string, email, googleID string) (int64, error) {
+// CreateUser creates a new user with hashed password and optional email/google_id/avatar
+func (r *UserRepo) CreateUser(username, name, passwordHash string, email, googleID, avatarURL string) (int64, error) {
 	var emailParam, googleIDParam interface{}
 	emailParam = nil
 	if email != "" {
@@ -69,12 +70,12 @@ func (r *UserRepo) CreateUser(username, name, passwordHash string, email, google
 	}
 
 	query := `
-	INSERT INTO players (username, name, password_hash, email, google_id, games_played, games_won, games_drawn, rating)
-	VALUES ($1, $2, $3, $4, $5, 0, 0, 0, 1000)
+	INSERT INTO players (username, name, password_hash, email, google_id, avatar_url, games_played, games_won, games_drawn, rating)
+	VALUES ($1, $2, $3, $4, $5, $6, 0, 0, 0, 1000)
 	RETURNING id;
 	`
 	var userID int64
-	err := r.DB.QueryRow(query, username, name, passwordHash, emailParam, googleIDParam).Scan(&userID)
+	err := r.DB.QueryRow(query, username, name, passwordHash, emailParam, googleIDParam, avatarURL).Scan(&userID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create user: %v", err)
 	}
@@ -88,6 +89,7 @@ func scanUser(row interface{ Scan(dest ...any) error }) (*User, error) {
 		&user.ID,
 		&user.Username,
 		&user.Name,
+		&user.AvatarURL,
 		&user.Email,
 		&user.GoogleID,
 		&user.IsVerified,
@@ -107,7 +109,7 @@ func scanUser(row interface{ Scan(dest ...any) error }) (*User, error) {
 	return &user, nil
 }
 
-const userSelectFields = `id, username, COALESCE(name, '') as name, email, google_id, is_verified, password_hash, games_played, games_won, games_drawn, rating, created_at`
+const userSelectFields = `id, username, COALESCE(name, '') as name, COALESCE(avatar_url, '') as avatar_url, email, google_id, is_verified, password_hash, games_played, games_won, games_drawn, rating, created_at`
 
 // GetUserByUsername retrieves a user by username
 func (r *UserRepo) GetUserByUsername(username string) (*User, error) {
@@ -165,57 +167,30 @@ func (r *UserRepo) GetUserByGoogleID(googleID string) (*User, error) {
 
 // GetUserByID retrieves a user by ID
 func (r *UserRepo) GetUserByID(userID int64) (*User, error) {
-	// First, check if user exists at all (diagnostic)
-	var exists bool
-	r.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM players WHERE id = $1)`, userID).Scan(&exists)
-	if !exists {
-		log.Printf("[DB] User %d does NOT exist in players table", userID)
-		return nil, nil
-	}
-
-	// Check if name column exists
-	var hasNameCol bool
-	r.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'players' AND column_name = 'name')`).Scan(&hasNameCol)
-	log.Printf("[DB] User %d exists=%v, has name column=%v", userID, exists, hasNameCol)
-
-	var user User
-	var query string
-	if hasNameCol {
-		query = `SELECT ` + userSelectFields + ` FROM players WHERE id = $1;`
-	} else {
-		query = `SELECT id, username, '' as name, email, google_id, is_verified, password_hash, games_played, games_won, games_drawn, rating, created_at FROM players WHERE id = $1;`
-	}
-
-	err := r.DB.QueryRow(query, userID).Scan(
-		&user.ID,
-		&user.Username,
-		&user.Name,
-		&user.Email,
-		&user.GoogleID,
-		&user.IsVerified,
-		&user.PasswordHash,
-		&user.GamesPlayed,
-		&user.GamesWon,
-		&user.GamesDrawn,
-		&user.Rating,
-		&user.CreatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+	query := `SELECT ` + userSelectFields + ` FROM players WHERE id = $1;`
+	user, err := scanUser(r.DB.QueryRow(query, userID))
 	if err != nil {
-		log.Printf("[DB] Scan error for user %d: %v", userID, err)
 		return nil, fmt.Errorf("failed to get user: %v", err)
 	}
-	return &user, nil
+	return user, nil
 }
 
-// UpdateProfile updates a user's name
+// UpdateProfile updates a user's display name
 func (r *UserRepo) UpdateProfile(userID int64, name string) error {
 	query := `UPDATE players SET name = $2 WHERE id = $1;`
 	_, err := r.DB.Exec(query, userID, name)
 	if err != nil {
 		return fmt.Errorf("failed to update profile: %v", err)
+	}
+	return nil
+}
+
+// UpdateAvatar updates a user's avatar URL
+func (r *UserRepo) UpdateAvatar(userID int64, avatarURL string) error {
+	query := `UPDATE players SET avatar_url = $2 WHERE id = $1;`
+	_, err := r.DB.Exec(query, userID, avatarURL)
+	if err != nil {
+		return fmt.Errorf("failed to update avatar: %v", err)
 	}
 	return nil
 }
