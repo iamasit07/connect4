@@ -60,7 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_active ON user_sessions(user_id, is_acti
 CREATE INDEX IF NOT EXISTS idx_sessions_cleanup ON user_sessions(created_at) WHERE is_active = FALSE;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_session ON user_sessions(user_id) WHERE is_active = TRUE;
 
--- Enable Row Level Security
-ALTER TABLE players ENABLE ROW LEVEL SECURITY;
-ALTER TABLE game ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
+-- Disable Row Level Security (backend handles auth/authz directly)
+ALTER TABLE players DISABLE ROW LEVEL SECURITY;
+ALTER TABLE game DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_sessions DISABLE ROW LEVEL SECURITY;
