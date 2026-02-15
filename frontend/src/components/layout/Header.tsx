@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { BackButton } from '../common/BackButton';
 
 interface HeaderProps {
@@ -69,6 +69,7 @@ export const Header = ({ onLogout }: HeaderProps) => {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar className="h-10 w-10">
+                    {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name || user.username} />}
                     <AvatarFallback className="bg-primary text-primary-foreground">
                       {(user.name || user.username).substring(0, 2).toUpperCase()}
                     </AvatarFallback>

@@ -1,75 +1,137 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { User, Trophy, Target, TrendingUp, Edit2, Save, X, Loader2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
-import { toast } from 'sonner';
-import { useAuthStore } from '@/features/auth/store/authStore';
-import { useUpdateProfile } from '@/hooks/queries/useAuthQueries';
+import { useRef, useState } from "react";
+import { motion } from "framer-motion";
+import {
+  User,
+  Trophy,
+  Target,
+  TrendingUp,
+  Edit2,
+  Save,
+  X,
+  Loader2,
+  Camera,
+  Trash2,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { toast } from "sonner";
+import { useAuthStore } from "@/features/auth/store/authStore";
+import {
+  useUpdateProfile,
+  useUploadAvatar,
+  useRemoveAvatar,
+} from "@/hooks/queries/useAuthQueries";
 
 const Profile = () => {
   const { user, setUser } = useAuthStore();
   const updateProfileMutation = useUpdateProfile();
+  const uploadAvatarMutation = useUploadAvatar();
+  const removeAvatarMutation = useRemoveAvatar();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
-    name: user?.name || '',
+    name: user?.name || "",
   });
 
   const stats = [
     {
-      label: 'Rating',
+      label: "Rating",
       value: user?.rating || 1000,
       icon: TrendingUp,
-      color: 'text-primary',
+      color: "text-primary",
     },
     {
-      label: 'Wins',
+      label: "Wins",
       value: user?.wins || 0,
       icon: Trophy,
-      color: 'text-green-500',
+      color: "text-green-500",
     },
     {
-      label: 'Losses',
+      label: "Losses",
       value: user?.losses || 0,
       icon: Target,
-      color: 'text-red-500',
+      color: "text-red-500",
     },
     {
-      label: 'Draws',
+      label: "Draws",
       value: user?.draws || 0,
       icon: Target,
-      color: 'text-muted-foreground',
+      color: "text-muted-foreground",
     },
   ];
 
-  const totalGames = (user?.wins || 0) + (user?.losses || 0) + (user?.draws || 0);
-  const winRate = totalGames > 0 
-    ? Math.round(((user?.wins || 0) / totalGames) * 100) 
-    : 0;
+  const totalGames =
+    (user?.wins || 0) + (user?.losses || 0) + (user?.draws || 0);
+  const winRate =
+    totalGames > 0 ? Math.round(((user?.wins || 0) / totalGames) * 100) : 0;
 
   const handleSave = async () => {
     try {
-      const response = await updateProfileMutation.mutateAsync({ name: formData.name });
+      const response = await updateProfileMutation.mutateAsync({
+        name: formData.name,
+      });
       setUser(response.user);
-      toast.success('Profile updated successfully');
+      toast.success("Profile updated successfully");
       setIsEditing(false);
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to update profile');
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to update profile");
     }
   };
 
   const handleCancel = () => {
     setFormData({
-      name: user?.name || '',
+      name: user?.name || "",
     });
     setIsEditing(false);
   };
 
-  const displayName = user?.name || user?.username || '';
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image must be smaller than 2MB");
+      return;
+    }
+
+    // Validate file type
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Only JPEG, PNG, and WebP images are allowed");
+      return;
+    }
+
+    try {
+      const response = await uploadAvatarMutation.mutateAsync(file);
+      if (user) {
+        setUser({ ...user, avatar_url: response.avatar_url });
+      }
+      toast.success("Avatar updated successfully");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to upload avatar");
+    }
+
+    // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemoveAvatar = async () => {
+    try {
+      await removeAvatarMutation.mutateAsync();
+      if (user) {
+        setUser({ ...user, avatar_url: "" });
+      }
+      toast.success("Avatar removed");
+    } catch (error) {
+      toast.error("Failed to remove avatar");
+    }
+  };
+
+  const displayName = user?.name || user?.username || "";
 
   return (
     <motion.div
@@ -93,7 +155,11 @@ const Profile = () => {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Account Details</CardTitle>
             {!isEditing ? (
-              <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsEditing(true)}
+              >
                 <Edit2 className="h-4 w-4 mr-2" />
                 Edit
               </Button>
@@ -108,7 +174,11 @@ const Profile = () => {
                   <X className="h-4 w-4 mr-2" />
                   Cancel
                 </Button>
-                <Button size="sm" onClick={handleSave} disabled={updateProfileMutation.isPending}>
+                <Button
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={updateProfileMutation.isPending}
+                >
                   {updateProfileMutation.isPending ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
@@ -121,14 +191,56 @@ const Profile = () => {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-6 mb-6">
-              <Avatar className="h-20 w-20">
-                <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                  {displayName.slice(0, 2).toUpperCase() || 'U'}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative group">
+                <Avatar className="h-20 w-20">
+                  {user?.avatar_url && (
+                    <AvatarImage src={user.avatar_url} alt={displayName} />
+                  )}
+                  <AvatarFallback className="text-2xl bg-primary/10 text-primary">
+                    {displayName.slice(0, 2).toUpperCase() || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                {isEditing && (
+                  <div className="absolute inset-0 flex items-center justify-center gap-1">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleAvatarUpload}
+                    />
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadAvatarMutation.isPending}
+                    >
+                      {uploadAvatarMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Camera className="h-4 w-4" />
+                      )}
+                    </Button>
+                    {user?.avatar_url && (
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={handleRemoveAvatar}
+                        disabled={removeAvatarMutation.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
               <div>
                 <h2 className="text-xl font-semibold">{displayName}</h2>
-                <p className="text-sm text-muted-foreground">@{user?.username}</p>
+                <p className="text-sm text-muted-foreground">
+                  @{user?.username}
+                </p>
                 <p className="text-sm text-muted-foreground">{user?.email}</p>
               </div>
             </div>
@@ -161,7 +273,7 @@ const Profile = () => {
               <div className="space-y-4">
                 <div>
                   <Label className="text-muted-foreground">Display Name</Label>
-                  <p className="font-medium">{user?.name || '—'}</p>
+                  <p className="font-medium">{user?.name || "—"}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Username</Label>
@@ -204,13 +316,15 @@ const Profile = () => {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Win Rate</span>
-                <span className={`font-semibold ${
-                  winRate >= 60 
-                    ? 'text-green-500' 
-                    : winRate >= 40 
-                      ? 'text-foreground' 
-                      : 'text-red-500'
-                }`}>
+                <span
+                  className={`font-semibold ${
+                    winRate >= 60
+                      ? "text-green-500"
+                      : winRate >= 40
+                        ? "text-foreground"
+                        : "text-red-500"
+                  }`}
+                >
                   {winRate}%
                 </span>
               </div>

@@ -61,3 +61,21 @@ export const useUpdateProfile = () => useMutation({
     return response.data;
   },
 });
+
+export const useUploadAvatar = () => useMutation({
+  mutationFn: async (file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await api.post<{ avatar_url: string }>('/auth/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+});
+
+export const useRemoveAvatar = () => useMutation({
+  mutationFn: async () => {
+    const response = await api.delete<{ avatar_url: string }>('/auth/avatar/remove');
+    return response.data;
+  },
+});
