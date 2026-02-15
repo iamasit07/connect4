@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -85,16 +86,16 @@ func main() {
 	// 4. Initialize Services (Business Logic Layer)
 	gameService := game.NewService(gameRepo)
 	sessionManager := game.NewSessionManager(gameRepo)
-	
+
 	// Setup Redis Cache wrapper if Redis is enabled
 	var cache session.CacheRepository
 	if redis.IsRedisEnabled() && redis.RedisClient != nil {
 		cache = redis.NewRedisCache(redis.RedisClient)
 	}
-	
+
 	authService := session.NewAuthService(sessionRepo, cache)
 	connManager := websocket.NewConnectionManager()
-	
+
 	// Define timeout callback for matchmaking
 	onMatchmakingTimeout := func(userID int64) {
 		connManager.SendMessage(userID, domain.ServerMessage{Type: "queue_timeout"})
@@ -102,13 +103,13 @@ func main() {
 	matchmakingQueue := matchmaking.NewMatchmakingQueue(onMatchmakingTimeout)
 
 	// 5. Initialize Background Workers
-	cleanupWorker := cleanup.NewWorker(sessionManager, sessionRepo) 
+	cleanupWorker := cleanup.NewWorker(sessionManager, sessionRepo)
 	go cleanupWorker.Start()
 
 	go matchmaking.MatchMakingListener(matchmakingQueue, connManager, sessionManager)
-	
+
 	// 6. Initialize HTTP Handlers (API Layer)
-	authHandler := transportHttp.NewAuthHandler(userRepo, sessionRepo, connManager, cache)
+	authHandler := transportHttp.NewAuthHandler(userRepo, sessionRepo, connManager, cache, authService)
 	historyHandler := transportHttp.NewHistoryHandler(gameRepo)
 	oauthHandler := transportHttp.NewOAuthHandler(userRepo, sessionRepo, &cfg.OAuthConfig, connManager)
 	wsHandler := websocket.NewHandler(connManager, matchmakingQueue, sessionManager, gameService, authService)
@@ -117,15 +118,17 @@ func main() {
 	mux := http.NewServeMux()
 
 	protected := func(handler http.HandlerFunc) http.HandlerFunc {
-		return middleware.AuthMiddleware(handler, sessionRepo)
+		return middleware.AuthMiddleware(handler, authService)
 	}
 
 	// Auth Routes
 	mux.HandleFunc("/api/auth/register", authHandler.Register)
 	mux.HandleFunc("/api/auth/login", authHandler.Login)
-	mux.HandleFunc("/api/auth/logout", authHandler.Logout)
+	mux.HandleFunc("/api/auth/logout", protected(authHandler.Logout))
 	mux.HandleFunc("/api/auth/me", protected(authHandler.Me))
 	mux.HandleFunc("/api/auth/profile", protected(authHandler.UpdateProfile))
+	mux.HandleFunc("/api/auth/avatar", protected(authHandler.UploadAvatar))
+	mux.HandleFunc("/api/auth/avatar/remove", protected(authHandler.RemoveAvatar))
 	mux.HandleFunc("/api/leaderboard", authHandler.Leaderboard)
 
 	// OAuth Routes
@@ -140,28 +143,31 @@ func main() {
 
 	mux.HandleFunc("/ws", wsHandler.HandleWebSocket)
 
+	// Serve uploaded files (avatars)
+	uploadsFS := http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads")))
+	mux.Handle("/uploads/", uploadsFS)
+
 	if _, err := os.Stat("./static"); err == nil {
 		fileServer := http.FileServer(http.Dir("./static"))
-		
+
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			path := "./static" + r.URL.Path
-			
+
 			if r.URL.Path == "/" {
 				http.ServeFile(w, r, "./static/index.html")
 				return
 			}
-			
+
 			if info, err := os.Stat(path); err == nil && !info.IsDir() {
 				fileServer.ServeHTTP(w, r)
 				return
 			}
-			
-			if len(r.URL.Path) > 4 && (r.URL.Path[0:8] == "/assets/" || r.URL.Path[len(r.URL.Path)-4:] == ".css" || r.URL.Path[len(r.URL.Path)-3:] == ".js") {
+
+			if strings.HasPrefix(r.URL.Path, "/assets/") || strings.HasSuffix(r.URL.Path, ".css") || strings.HasSuffix(r.URL.Path, ".js") {
 				http.NotFound(w, r)
 				return
 			}
-			
-			// 4. Otherwise, serve index.html (client-side routing)
+
 			http.ServeFile(w, r, "./static/index.html")
 		})
 	}

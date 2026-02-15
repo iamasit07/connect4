@@ -4,15 +4,20 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"time"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
 	"github.com/iamasit07/4-in-a-row/backend/pkg/auth"
 	"github.com/iamasit07/4-in-a-row/backend/pkg/httputil"
 )
 
-// AuthMiddleware validates JWT token from cookie
-// AuthMiddleware wraps the next handler and validates the JWT + Session Status
-func AuthMiddleware(next http.HandlerFunc, sessionRepo *postgres.SessionRepo) http.HandlerFunc {
+// SessionValidator abstracts session validation (implemented by session.AuthService)
+type SessionValidator interface {
+	ValidateToken(tokenString string) (*auth.Claims, error)
+	UpdateSessionActivity(sessionID string) error
+}
+
+// AuthMiddleware validates JWT token and session via the AuthService (Redis → Postgres fallback)
+func AuthMiddleware(next http.HandlerFunc, sv SessionValidator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// 1. Extract Token (Cookie or Header)
 		tokenString, err := httputil.GetTokenFromRequest(r)
@@ -21,40 +26,29 @@ func AuthMiddleware(next http.HandlerFunc, sessionRepo *postgres.SessionRepo) ht
 			return
 		}
 
-		// 2. Validate JWT Signature (Stateless check)
-		claims, err := auth.ValidateJWT(tokenString)
+		// 2. Validate JWT + Session (checks signature, is_active, and expires_at)
+		claims, err := sv.ValidateToken(tokenString)
 		if err != nil {
-			log.Printf("[AUTH] Invalid token for %s: %v", r.URL.Path, err)
+			log.Printf("[AUTH] Token/session validation failed for %s: %v", r.URL.Path, err)
 			httputil.ClearAuthCookie(w)
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		// 3. Validate Session in DB (Stateful check)
-		session, err := sessionRepo.GetSessionByID(claims.SessionID)
-		if err != nil || session == nil {
-			log.Printf("[AUTH] Session invalid for user %d (session %s): %v", claims.UserID, claims.SessionID, err)
-			httputil.ClearAuthCookie(w)
-			http.Error(w, "Session invalid", http.StatusUnauthorized)
-			return
-		}
+		log.Printf("[AUTH] Success for %s (User: %d)", r.URL.Path, claims.UserID)
 
-		// Check if session is explicitly deactivated
-		if !session.IsActive {
-			log.Printf("[AUTH] Session inactive for user %d", claims.UserID)
-			httputil.ClearAuthCookie(w)
-			http.Error(w, "Session logged out", http.StatusUnauthorized)
-			return
-		}
-        
-        log.Printf("[AUTH] Success for %s (User: %d)", r.URL.Path, claims.UserID)
+		// 3. Update Last Activity (async, best-effort)
+		go func(sid string) {
+			if err := sv.UpdateSessionActivity(sid); err != nil {
+				log.Printf("[AUTH] Failed to update session activity for %s: %v", sid, err)
+			}
+		}(claims.SessionID)
 
-		// 4. Update Last Activity
-		go sessionRepo.UpdateSessionActivity(claims.SessionID)
-
-		// 5. Pass UserID to next handler
+		// 4. Pass UserID and username to next handler
 		ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
 		ctx = context.WithValue(ctx, "username", claims.Username)
+		ctx = context.WithValue(ctx, "session_id", claims.SessionID)
+		ctx = context.WithValue(ctx, "session_expiry", time.Now())
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }

@@ -10,7 +10,7 @@ import (
 const AuthCookieName = "auth_token"
 
 func SetAuthCookie(w http.ResponseWriter, token string) {
-	expirationHours := config.GetEnvAsInt("JWT_EXPIRATION_HOURS", 72)
+	expirationHours := config.GetEnvAsInt("JWT_EXPIRATION_HOURS", 720)
 	maxAge := expirationHours * 60 * 60
 
 	isProduction := config.GetEnv("ENVIRONMENT", "development") == "production"
@@ -21,33 +21,40 @@ func SetAuthCookie(w http.ResponseWriter, token string) {
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   isProduction, // Only require HTTPS in production
+		Secure:   isProduction,
 	}
 
-	// SameSite=None requires Secure=true, so use Lax for development
 	if isProduction {
 		cookie.SameSite = http.SameSiteNoneMode
-		cookie.Secure = true // Must be true for SameSite=None
+		cookie.Secure = true
 	} else {
-		cookie.SameSite = http.SameSiteLaxMode // Works for localhost without HTTPS
+		cookie.SameSite = http.SameSiteLaxMode
 	}
 
 	http.SetCookie(w, cookie)
 }
 
 func ClearAuthCookie(w http.ResponseWriter) {
+	isProduction := config.GetEnv("ENVIRONMENT", "development") == "production"
+
 	cookie := &http.Cookie{
 		Name:     AuthCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   isProduction,
+	}
+
+	if isProduction {
+		cookie.SameSite = http.SameSiteNoneMode
+	} else {
+		cookie.SameSite = http.SameSiteLaxMode
 	}
 
 	http.SetCookie(w, cookie)
 }
 
-// GetTokenFromCookie extracts the JWT token from the auth cookie
 func GetTokenFromCookie(r *http.Request) (string, error) {
 	cookie, err := r.Cookie(AuthCookieName)
 	if err != nil {
@@ -67,10 +74,8 @@ func GetTokenFromRequest(r *http.Request) (string, error) {
 		return token, nil
 	}
 
-	// Fallback to Authorization header (for WebSocket upgrade compatibility)
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "" {
-		// Support "Bearer <token>" format
 		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 			return authHeader[7:], nil
 		}

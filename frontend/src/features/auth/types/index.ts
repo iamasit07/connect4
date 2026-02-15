@@ -2,6 +2,7 @@ export interface User {
   id: string;
   username: string;
   name: string;
+  avatar_url?: string;
   email: string;
   rating?: number;
   wins?: number;
