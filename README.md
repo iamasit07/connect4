@@ -250,7 +250,6 @@ DB_MAX_IDLE_CONNS=25
 DB_CONN_MAX_LIFETIME_MINUTES=5
 
 # Game Configuration
-RECONNECT_TIMEOUT_SECONDS=30
 BOT_MATCHMAKING_TIMEOUT_SECONDS=10
 BOT_USERNAME=BOT
 BOT_TOKEN=tkn_bot_default
@@ -325,7 +324,6 @@ http://localhost:5173
 | `DB_MAX_OPEN_CONNS`               | Max open database connections    | `25`                    | ❌ No    |
 | `DB_MAX_IDLE_CONNS`               | Max idle database connections    | `25`                    | ❌ No    |
 | `DB_CONN_MAX_LIFETIME_MINUTES`    | Connection max lifetime          | `5`                     | ❌ No    |
-| `RECONNECT_TIMEOUT_SECONDS`       | Grace period for reconnection    | `30`                    | ❌ No    |
 | `BOT_MATCHMAKING_TIMEOUT_SECONDS` | Bot matchmaking timeout          | `10`                    | ❌ No    |
 | `BOT_USERNAME`                    | Display name for bot             | `BOT`                   | ❌ No    |
 | `BOT_TOKEN`                       | Special token for bot games      | `tkn_bot_default`       | ❌ No    |
