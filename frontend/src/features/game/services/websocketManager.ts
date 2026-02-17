@@ -1,7 +1,7 @@
-import { WS_URL, API_BASE_URL, BOT_MOVE_DELAY } from '@/lib/config';
-import { useGameStore } from '../store/gameStore';
-import type { Board, ServerMessage } from '../types';
-import { toast } from 'sonner';
+import { WS_URL, API_BASE_URL, BOT_MOVE_DELAY } from "@/lib/config";
+import { useGameStore } from "../store/gameStore";
+import type { Board, ServerMessage } from "../types";
+import { toast } from "sonner";
 
 type MessageHandler = (message: ServerMessage) => void;
 
@@ -28,77 +28,87 @@ class WebSocketManager {
     const myConnectionId = ++this.currentConnectionId;
 
     if (this.socket?.readyState === WebSocket.OPEN) {
-      console.log('[WebSocket] Already connected');
+      console.log("[WebSocket] Already connected");
       return;
     }
 
-    this.connectionPromise = new Promise<void>(async (resolve, reject) => {
-      try {
-        console.log(`[WebSocket] Connection attempt #${myConnectionId} starting...`);
-        
-        const response = await fetch(`${API_BASE_URL}/auth/me`, {
-          credentials: 'include'
-        });
-        
-        // CHECK 1: If we became stale while fetching, stop immediately.
-        if (myConnectionId !== this.currentConnectionId) {
-          console.log(`[WebSocket] Stale attempt #${myConnectionId} aborted before socket creation.`);
-          // Resolve to avoid crashing the caller, but do nothing.
-          resolve(); 
-          return;
-        }
+    this.connectionPromise = new Promise<void>((resolve, reject) => {
+      const attempt = async () => {
+        try {
+          console.log(
+            `[WebSocket] Connection attempt #${myConnectionId} starting...`,
+          );
 
-        if (!response.ok) {
-          throw new Error(`Token fetch failed: ${response.status}`);
-        }
+          const response = await fetch(`${API_BASE_URL}/auth/me`, {
+            credentials: "include",
+          });
 
-        const data = await response.json();
-        if (!data.token) {
-          throw new Error('No token received');
-        }
-
-        const ws = new WebSocket(WS_URL);
-
-        ws.onopen = () => {
-          // CHECK 2: If we became stale while opening, close and exit.
+          // CHECK 1: If we became stale while fetching, stop immediately.
           if (myConnectionId !== this.currentConnectionId) {
-            console.log(`[WebSocket] Stale attempt #${myConnectionId} aborted after open.`);
-            ws.close();
+            console.log(
+              `[WebSocket] Stale attempt #${myConnectionId} aborted before socket creation.`,
+            );
+            // Resolve to avoid crashing the caller, but do nothing.
             resolve();
             return;
           }
 
-          console.log(`[WebSocket] Sending init for attempt #${myConnectionId}`);
-          ws.send(JSON.stringify({ type: 'init', jwt: data.token }));
-          
-          this.socket = ws;
-          this.setupListeners(ws);
-          resolve();
-        };
+          if (!response.ok) {
+            throw new Error(`Token fetch failed: ${response.status}`);
+          }
 
-        ws.onerror = (error) => {
+          const data = await response.json();
+          if (!data.token) {
+            throw new Error("No token received");
+          }
+
+          const ws = new WebSocket(WS_URL);
+
+          ws.onopen = () => {
+            // CHECK 2: If we became stale while opening, close and exit.
+            if (myConnectionId !== this.currentConnectionId) {
+              console.log(
+                `[WebSocket] Stale attempt #${myConnectionId} aborted after open.`,
+              );
+              ws.close();
+              resolve();
+              return;
+            }
+
+            console.log(
+              `[WebSocket] Sending init for attempt #${myConnectionId}`,
+            );
+            ws.send(JSON.stringify({ type: "init", jwt: data.token }));
+
+            this.socket = ws;
+            this.setupListeners(ws);
+            resolve();
+          };
+
+          ws.onerror = (error) => {
+            if (myConnectionId === this.currentConnectionId) {
+              console.error("[WebSocket] Connection failed:", error);
+              this.socket = null;
+              this.connectionPromise = null;
+              reject(error);
+            }
+          };
+
+          ws.onclose = (event) => {
+            if (myConnectionId === this.currentConnectionId) {
+              console.log("[WebSocket] Disconnected:", event.code);
+              this.socket = null;
+              this.connectionPromise = null;
+            }
+          };
+        } catch (error) {
           if (myConnectionId === this.currentConnectionId) {
-            console.error('[WebSocket] Connection failed:', error);
-            this.socket = null;
             this.connectionPromise = null;
             reject(error);
           }
-        };
-
-        ws.onclose = (event) => {
-          if (myConnectionId === this.currentConnectionId) {
-            console.log('[WebSocket] Disconnected:', event.code);
-            this.socket = null;
-            this.connectionPromise = null;
-          }
-        };
-
-      } catch (error) {
-        if (myConnectionId === this.currentConnectionId) {
-          this.connectionPromise = null;
-          reject(error);
         }
-      }
+      };
+      attempt();
     });
 
     return this.connectionPromise;
@@ -113,11 +123,11 @@ class WebSocketManager {
     this.connectionPromise = null;
   }
 
-  public send(message: any) {
+  public send(message: Record<string, unknown>) {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(message));
     } else {
-      console.warn('[WebSocket] Cannot send, socket not open');
+      console.warn("[WebSocket] Cannot send, socket not open");
     }
   }
 
@@ -125,84 +135,113 @@ class WebSocketManager {
     ws.onmessage = (event) => {
       try {
         const message: ServerMessage = JSON.parse(event.data);
-        console.log('[WebSocket] Received message:', message.type, message);
-        
+        console.log("[WebSocket] Received message:", message.type, message);
+
         // Handle message internally first
         this.handleMessage(message);
-        
+
         // Then notify all registered handlers
         this.messageHandlers.forEach((handler) => handler(message));
       } catch (error) {
-        console.error('[WebSocket] Parse error:', error);
+        console.error("[WebSocket] Parse error:", error);
       }
     };
   }
 
   private handleMessage(message: ServerMessage) {
     const store = useGameStore.getState();
-    
+
     switch (message.type) {
-      case 'queue_joined':
-        toast.info('Searching for opponent...');
+      case "queue_joined":
+        toast.info("Searching for opponent...");
         break;
 
-      case 'game_start':
+      case "game_start":
         store.initGame({
           gameId: message.gameId,
-          board: message.board as any,
+          board: message.board as Board,
           currentTurn: message.currentTurn,
           myPlayer: message.yourPlayer,
           opponent: message.opponent,
         });
-        
+
         toast.success(`Game started against ${message.opponent}!`);
-        
+
         // Notify all game start callbacks
-        this.onGameStartCallbacks.forEach(callback => {
+        this.onGameStartCallbacks.forEach((callback) => {
           if (message.gameId) callback(message.gameId);
         });
         break;
 
-      case 'move_made':
-      case 'game_state':
-        const isBotGame = store.gameMode === 'bot';
-        const wasOpponentMove = message.lastMove && 
-          message.lastMove.player !== store.myPlayer;
-        
-        const currentTurn = 'nextTurn' in message ? message.nextTurn : message.currentTurn;
-        
+      case "move_made":
+      case "game_state": {
+        const isBotGame = store.gameMode === "bot";
+        const wasOpponentMove =
+          message.lastMove && message.lastMove.player !== store.myPlayer;
+
+        const currentTurn =
+          "nextTurn" in message ? message.nextTurn : message.currentTurn;
+
         if (isBotGame && wasOpponentMove) {
           setTimeout(() => {
             store.updateGameState({
-              board: message.board as any,
+              board: message.board as Board,
               currentTurn: currentTurn,
               lastMove: message.lastMove,
             });
           }, BOT_MOVE_DELAY);
         } else {
           store.updateGameState({
-            board: message.board as any,
+            board: message.board as Board,
             currentTurn: currentTurn,
             lastMove: message.lastMove,
           });
         }
         break;
+      }
 
-      case 'game_over':
+      case "game_over":
         store.endGame({
           winner: message.winner,
           reason: message.reason,
           winningCells: message.winningCells,
           board: message.board as Board,
+          allowRematch: message.allowRematch,
         });
         break;
 
-      case 'error':
-        toast.error(message.message || 'An error occurred');
+      case "rematch_request":
+        store.setRematchStatus("received");
+        break;
+
+      case "rematch_accepted":
+        store.setRematchStatus("accepted");
+        toast.success("Rematch accepted! Starting new game...");
+        break;
+
+      case "rematch_declined":
+        store.setRematchStatus("declined");
+        store.setAllowRematch(false);
+        toast.info("Rematch declined");
+        break;
+
+      case "rematch_timeout":
+        store.setRematchStatus("declined");
+        store.setAllowRematch(false);
+        toast.info("Rematch request timed out");
+        break;
+
+      case "rematch_cancelled":
+        store.setRematchStatus("idle");
+        toast.info("Rematch request cancelled");
+        break;
+
+      case "error":
+        toast.error(message.message || "An error occurred");
         break;
 
       default:
-        console.log('[WebSocket] Unhandled message type:', message.type);
+        console.log("[WebSocket] Unhandled message type:", message.type);
     }
   }
 }

@@ -47,6 +47,7 @@ interface GameStore {
   
   // Rematch state
   rematchStatus: RematchStatus;
+  allowRematch: boolean;
   
   // Connection actions
   setConnectionStatus: (status: ConnectionStatus, error?: string) => void;
@@ -72,6 +73,7 @@ interface GameStore {
     reason: string;
     winningCells?: { row: number; col: number }[];
     board?: CellValue[][];
+    allowRematch?: boolean;
   }) => void;
   resetGame: () => void;
   
@@ -84,6 +86,7 @@ interface GameStore {
   
   // Rematch actions
   setRematchStatus: (status: RematchStatus) => void;
+  setAllowRematch: (allow: boolean) => void;
   
   // Helpers
   isMyTurn: () => boolean;
@@ -120,6 +123,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   
   // Rematch state
   rematchStatus: 'idle',
+  allowRematch: true,
   
   setConnectionStatus: (connectionStatus, error) => set({ 
     connectionStatus,
@@ -161,12 +165,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     timeLeft: timeLeft !== undefined ? timeLeft : state.turnTimeLimit,
   })),
   
-  endGame: ({ winner, reason, winningCells, board }) => set((state) => ({
+  endGame: ({ winner, reason, winningCells, board, allowRematch }) => set((state) => ({
     gameStatus: 'finished',
     winner,
     winReason: reason,
     winningCells: winningCells || null,
     board: board || state.board,
+    allowRematch: allowRematch !== undefined ? allowRematch : true,
   })),
   
   resetGame: () => set({
@@ -188,6 +193,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     isSpectator: false,
     spectatorCount: 0,
     rematchStatus: 'idle',
+    allowRematch: true,
   }),
   
   setTimeLeft: (time) => set({ timeLeft: time }),
@@ -197,6 +203,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setSpectatorCount: (count) => set({ spectatorCount: count }),
   
   setRematchStatus: (status) => set({ rematchStatus: status }),
+  
+  setAllowRematch: (allow) => set({ allowRematch: allow }),
   
   isMyTurn: () => {
     const { myPlayer, currentTurn, gameStatus, isSpectator } = get();

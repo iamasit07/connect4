@@ -20,7 +20,7 @@ func NewSessionRepo(db *sql.DB) *SessionRepo {
 func (r *SessionRepo) CreateSession(userID int64, sessionID, deviceInfo, ipAddress string, expiresAt time.Time) error {
 	query := `
 	INSERT INTO user_sessions (user_id, session_id, device_info, ip_address, expires_at)
-	VALUES ($1, $2::text, $3, $4, $5);
+	VALUES ($1, CAST($2 as VARCHAR), $3, $4, $5);
 	`
 	_, err := r.DB.Exec(query, userID, sessionID, deviceInfo, ipAddress, expiresAt)
 	if err != nil {
@@ -34,7 +34,7 @@ func (r *SessionRepo) GetSessionByID(sessionID string) (*domain.UserSession, err
 	query := `
 	SELECT id, user_id, session_id, device_info, ip_address, created_at, expires_at, last_activity, is_active
 	FROM user_sessions
-	WHERE session_id = $1::text;
+	WHERE session_id = CAST($1 as VARCHAR);
 	`
 	var session domain.UserSession
 	err := r.DB.QueryRow(query, sessionID).Scan(
@@ -105,7 +105,7 @@ func (r *SessionRepo) DeactivateSession(sessionID string) error {
 	query := `
 	UPDATE user_sessions
 	SET is_active = FALSE
-	WHERE session_id = $1::text;
+	WHERE session_id = CAST($1 as VARCHAR);
 	`
 	_, err := r.DB.Exec(query, sessionID)
 	if err != nil {
@@ -119,7 +119,7 @@ func (r *SessionRepo) UpdateSessionActivity(sessionID string) error {
 	query := `
 	UPDATE user_sessions
 	SET last_activity = CURRENT_TIMESTAMP
-	WHERE session_id = $1::text;
+	WHERE session_id = CAST($1 as VARCHAR);
 	`
 	_, err := r.DB.Exec(query, sessionID)
 	if err != nil {

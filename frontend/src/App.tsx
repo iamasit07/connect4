@@ -26,77 +26,80 @@ import { useEffect } from "react";
 
 const ThemeInitializer = () => {
   const { theme } = useUIStore();
-  
+
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.remove('light', 'dark');
-    
-    if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    root.classList.remove("light", "dark");
+
+    if (theme === "system") {
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
+        .matches
+        ? "dark"
+        : "light";
       root.classList.add(systemTheme);
     } else {
       root.classList.add(theme);
     }
   }, [theme]);
-  
+
   return null;
 };
 
 const AppContent = () => {
   useAuthInitializer();
-  
+
   return (
     <>
       <ThemeInitializer />
       <Routes>
         <Route path="/" element={<LandingPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
-      <Route path="/auth/callback" element={<AuthCallback />} />
-      <Route path="/complete-signup" element={<CompleteSignupPage />} />
-      
-      {/* App routes with layout */}
-      <Route element={<AppLayout />}>
-        <Route path="/play" element={<PlayGame />} />
-        <Route path="/play/queue" element={<QueuePage />} />
-        <Route path="/play/bot" element={<BotLoadingPage />} />
-        <Route path="/game/:gameId" element={<GamePage />} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/history"
-          element={
-            <ProtectedRoute>
-              <GameHistory />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/leaderboard"
-          element={
-            <ProtectedRoute>
-              <Leaderboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
-      </Route>
-      
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/complete-signup" element={<CompleteSignupPage />} />
+
+        {/* App routes with layout */}
+        <Route element={<AppLayout />}>
+          <Route path="/play" element={<PlayGame />} />
+          <Route path="/play/queue" element={<QueuePage />} />
+          <Route path="/play/bot" element={<BotLoadingPage />} />
+          <Route path="/game/:gameId" element={<GamePage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <ProtectedRoute>
+                <GameHistory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/leaderboard"
+            element={
+              <ProtectedRoute>
+                <Leaderboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        <Route path="*" element={<NotFound />} />
+      </Routes>
     </>
   );
 };

@@ -68,19 +68,19 @@ export const GameResultBanner = () => {
     <motion.div
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`w-full max-w-[min(90vw,500px)] mx-auto mb-4 rounded-xl p-4 ${bgColor} border-2 ${
+      className={`w-full max-w-[min(90vw,500px)] mx-auto mb-2 sm:mb-4 rounded-xl p-2 sm:p-4 flex-shrink-0 ${bgColor} border-2 ${
         isDraw ? 'border-muted-foreground/20' : isWinner ? 'border-green-500/50' : 'border-red-500/50'
       }`}
     >
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 sm:gap-4">
         <div className={textColor}>
           {getIcon()}
         </div>
         <div className="flex-1">
-          <h2 className={`text-2xl font-bold ${textColor}`}>
+          <h2 className={`text-lg sm:text-2xl font-bold ${textColor}`}>
             {getMessage()}
           </h2>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
             {getSubMessage()}
           </p>
         </div>
