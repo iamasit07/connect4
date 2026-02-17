@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/iamasit07/4-in-a-row/backend/internal/config"
 	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
 	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
@@ -24,7 +25,7 @@ import (
 	"github.com/iamasit07/4-in-a-row/backend/internal/transport/websocket"
 	"github.com/joho/godotenv"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func main() {
@@ -35,7 +36,7 @@ func main() {
 	}
 
 	cfg := config.LoadConfig()
-	db, err := sql.Open("postgres", cfg.DatabaseURL)
+	db, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
@@ -115,71 +116,82 @@ func main() {
 	wsHandler := websocket.NewHandler(connManager, matchmakingQueue, sessionManager, gameService, authService)
 	watchHandler := transportHttp.NewWatchHandler(sessionManager)
 
-	// 7. Setup Router
-	mux := http.NewServeMux()
+	// 7. Setup Gin Router
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(middleware.CORSMiddleware())
 
-	protected := func(handler http.HandlerFunc) http.HandlerFunc {
-		return middleware.AuthMiddleware(handler, authService)
+	// Auth middleware for protected routes
+	authMW := middleware.AuthMiddleware(authService)
+
+	// Public Auth Routes
+	router.POST("/api/auth/register", authHandler.Register)
+	router.POST("/api/auth/login", authHandler.Login)
+	router.GET("/api/leaderboard", authHandler.Leaderboard)
+
+	// OAuth Routes (public)
+	router.GET("/api/auth/google/login", oauthHandler.GoogleLogin)
+	router.GET("/api/auth/google/callback", oauthHandler.GoogleCallback)
+	router.POST("/api/auth/google/complete", oauthHandler.CompleteGoogleSignup)
+
+	// Protected Routes
+	protected := router.Group("/")
+	protected.Use(authMW)
+	{
+		protected.POST("/api/auth/logout", authHandler.Logout)
+		protected.GET("/api/auth/me", authHandler.Me)
+		protected.PUT("/api/auth/profile", authHandler.UpdateProfile)
+		protected.POST("/api/auth/avatar", authHandler.UploadAvatar)
+		protected.DELETE("/api/auth/avatar/remove", authHandler.RemoveAvatar)
+
+		// Game History Routes
+		protected.GET("/api/history", historyHandler.GetHistory)
+		protected.GET("/api/history/:id", historyHandler.GetGameDetails)
+		protected.GET("/api/sessions", authHandler.GetSessionHistory)
+
+		// Watch / Spectator Routes
+		protected.GET("/api/watch", watchHandler.GetLiveGames)
 	}
 
-	// Auth Routes
-	mux.HandleFunc("/api/auth/register", authHandler.Register)
-	mux.HandleFunc("/api/auth/login", authHandler.Login)
-	mux.HandleFunc("/api/auth/logout", protected(authHandler.Logout))
-	mux.HandleFunc("/api/auth/me", protected(authHandler.Me))
-	mux.HandleFunc("/api/auth/profile", protected(authHandler.UpdateProfile))
-	mux.HandleFunc("/api/auth/avatar", protected(authHandler.UploadAvatar))
-	mux.HandleFunc("/api/auth/avatar/remove", protected(authHandler.RemoveAvatar))
-	mux.HandleFunc("/api/leaderboard", authHandler.Leaderboard)
-
-	// OAuth Routes
-	mux.HandleFunc("/api/auth/google/login", oauthHandler.GoogleLogin)
-	mux.HandleFunc("/api/auth/google/callback", oauthHandler.GoogleCallback)
-	mux.HandleFunc("/api/auth/google/complete", oauthHandler.CompleteGoogleSignup)
-
-	// Game History Routes
-	mux.HandleFunc("/api/history", protected(historyHandler.GetHistory))
-	mux.HandleFunc("/api/history/", protected(historyHandler.GetGameDetails))
-	mux.HandleFunc("/api/sessions", protected(authHandler.GetSessionHistory))
-
-	// Watch / Spectator Routes
-	mux.HandleFunc("/api/watch", protected(watchHandler.GetLiveGames))
-
-	mux.HandleFunc("/ws", wsHandler.HandleWebSocket)
+	// WebSocket Route (auth handled inside the WS handler itself)
+	router.GET("/ws", wsHandler.HandleWebSocket)
 
 	// Serve uploaded files (avatars)
-	uploadsFS := http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads")))
-	mux.Handle("/uploads/", uploadsFS)
+	router.Static("/uploads", "./uploads")
 
+	// Serve static frontend files (SPA fallback)
 	if _, err := os.Stat("./static"); err == nil {
-		fileServer := http.FileServer(http.Dir("./static"))
+		router.Static("/assets", "./static/assets")
 
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			path := "./static" + r.URL.Path
+		// Serve known static file extensions directly
+		router.GET("/", func(c *gin.Context) {
+			c.File("./static/index.html")
+		})
 
-			if r.URL.Path == "/" {
-				http.ServeFile(w, r, "./static/index.html")
-				return
-			}
+		// SPA fallback: serve index.html for all unmatched routes
+		router.NoRoute(func(c *gin.Context) {
+			path := "./static" + c.Request.URL.Path
 
+			// Serve actual static files if they exist
 			if info, err := os.Stat(path); err == nil && !info.IsDir() {
-				fileServer.ServeHTTP(w, r)
+				c.File(path)
 				return
 			}
 
-			if strings.HasPrefix(r.URL.Path, "/assets/") || strings.HasSuffix(r.URL.Path, ".css") || strings.HasSuffix(r.URL.Path, ".js") {
-				http.NotFound(w, r)
+			// For asset requests that don't exist, return 404
+			if strings.HasPrefix(c.Request.URL.Path, "/assets/") || strings.HasSuffix(c.Request.URL.Path, ".css") || strings.HasSuffix(c.Request.URL.Path, ".js") {
+				c.Status(http.StatusNotFound)
 				return
 			}
 
-			http.ServeFile(w, r, "./static/index.html")
+			// SPA fallback
+			c.File("./static/index.html")
 		})
 	}
 
-	handler := middleware.EnableCORS(mux)
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: handler,
+		Handler: router,
 	}
 
 	go func() {
