@@ -9,6 +9,8 @@ import { RematchOverlay } from "../components/RematchRequest";
 import { useGameSocket } from "../hooks/useGameSocket";
 import { useGameStore } from "../store/gameStore";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Home } from "lucide-react";
 
 const GamePage = () => {
   const { gameId } = useParams<{ gameId: string }>();
@@ -22,7 +24,7 @@ const GamePage = () => {
     [navigate],
   );
 
-  const { makeMove, surrender, disconnect, sendMessage } =
+  const { makeMove, surrender, disconnect, sendMessage, leaveSpectate } =
     useGameSocket(onGameStart);
   const {
     gameStatus,
@@ -34,6 +36,7 @@ const GamePage = () => {
     allowRematch,
     opponent,
     gameId: storeGameId,
+    isSpectator,
   } = useGameStore();
 
   useEffect(() => {
@@ -43,11 +46,21 @@ const GamePage = () => {
   }, [gameStatus, storeGameId, gameId, navigate]);
 
   const handleColumnClick = (col: number) => {
+    if (isSpectator) return;
     makeMove(col);
   };
 
   const handleSurrender = () => {
     surrender();
+  };
+
+  const handleLeaveSpectate = () => {
+    if (storeGameId) {
+      leaveSpectate(storeGameId);
+    }
+    disconnect();
+    resetGame();
+    navigate("/dashboard");
   };
 
   const handlePlayAgain = () => {
@@ -109,7 +122,7 @@ const GamePage = () => {
         {/* Board Area: Flexible */}
         <div className="flex-1 w-full min-h-0 flex flex-col items-center justify-center relative">
           <Board onColumnClick={handleColumnClick} />
-          {rematchStatus === "received" && (
+          {!isSpectator && rematchStatus === "received" && (
             <RematchOverlay
               onAccept={handleAcceptRematch}
               onDecline={handleDeclineRematch}
@@ -120,14 +133,30 @@ const GamePage = () => {
 
         {/* Footer Area: Fixed height controls */}
         <div className="flex-shrink-0 w-full flex flex-col gap-2 pb-safe">
-          <GameControls
-            onSurrender={handleSurrender}
-            isPlaying={gameStatus === "playing"}
-          />
-          <GameEndActions
-            onPlayAgain={handlePlayAgain}
-            onGoHome={handleGoHome}
-          />
+          {isSpectator ? (
+            <div className="flex justify-center mt-2 sm:mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={handleLeaveSpectate}
+              >
+                <Home className="w-4 h-4" />
+                Leave Spectate
+              </Button>
+            </div>
+          ) : (
+            <>
+              <GameControls
+                onSurrender={handleSurrender}
+                isPlaying={gameStatus === "playing"}
+              />
+              <GameEndActions
+                onPlayAgain={handlePlayAgain}
+                onGoHome={handleGoHome}
+              />
+            </>
+          )}
         </div>
       </div>
     </div>

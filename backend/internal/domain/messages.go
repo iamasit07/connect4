@@ -2,10 +2,10 @@ package domain
 
 type ClientMessage struct {
 	Type            string `json:"type"`
-	JWT             string `json:"jwt"`                     // JWT token for authentication
+	JWT             string `json:"jwt"` // JWT token for authentication
 	GameID          string `json:"gameId,omitempty"`
 	Column          int    `json:"column,omitempty"`
-	Difficulty      string `json:"difficulty,omitempty"`    // Bot difficulty: "easy", "medium", "hard"
+	Difficulty      string `json:"difficulty,omitempty"` // Bot difficulty: "easy", "medium", "hard"
 	RequestRematch  bool   `json:"requestRematch,omitempty"`
 	RematchResponse string `json:"rematchResponse,omitempty"` // "accept" or "decline"
 }
@@ -15,14 +15,16 @@ type ServerMessage struct {
 	Message          string       `json:"message,omitempty"`
 	GameID           string       `json:"gameId,omitempty"`
 	Opponent         string       `json:"opponent,omitempty"`
+	Player1          string       `json:"player1,omitempty"`     // Player 1 username (for spectators)
+	Player2          string       `json:"player2,omitempty"`     // Player 2 username (for spectators)
 	YourPlayer       int          `json:"yourPlayer,omitempty"`  // 1 or 2 for board position
 	CurrentTurn      int          `json:"currentTurn,omitempty"` // 1 or 2
 	Column           int          `json:"column,omitempty"`
 	Row              int          `json:"row,omitempty"`
-	Player           int          `json:"player,omitempty"`      // 1 or 2
+	Player           int          `json:"player,omitempty"` // 1 or 2
 	Board            [][]PlayerID `json:"board,omitempty"`
-	NextTurn         int          `json:"nextTurn,omitempty"`    // 1 or 2
-	Winner           string       `json:"winner,omitempty"`     // username or "draw"
+	NextTurn         int          `json:"nextTurn,omitempty"` // 1 or 2
+	Winner           string       `json:"winner,omitempty"`   // username or "draw"
 	Reason           string       `json:"reason,omitempty"`
 	TimeRemaining    int          `json:"timeRemaining,omitempty"`
 	RematchRequester string       `json:"rematchRequester,omitempty"` // username who requested rematch

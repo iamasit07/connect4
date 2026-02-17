@@ -70,11 +70,32 @@ export const useGameSocket = (
     websocketManager.send(message as any);
   }, []);
 
+  const spectateGame = useCallback(async (gameId: string) => {
+    try {
+      setConnectionStatus('connecting');
+      await websocketManager.connect();
+      setConnectionStatus('connected');
+    } catch (error) {
+      console.error('[WebSocket] Connection failed:', error);
+      setConnectionStatus('error');
+      toast.error('Failed to connect to game server');
+      return;
+    }
+
+    websocketManager.send({ type: 'watch_game', gameId });
+  }, [setConnectionStatus]);
+
+  const leaveSpectate = useCallback((gameId: string) => {
+    websocketManager.send({ type: 'leave_spectate', gameId });
+  }, []);
+
   return {
     findMatch,
     makeMove,
     surrender,
     disconnect,
     sendMessage,
+    spectateGame,
+    leaveSpectate,
   };
 };

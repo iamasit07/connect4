@@ -171,6 +171,23 @@ class WebSocketManager {
         });
         break;
 
+      case "spectate_start":
+        store.initSpectatorGame({
+          gameId: message.gameId,
+          board: message.board as Board,
+          currentTurn: message.currentTurn,
+          player1: message.player1,
+          player2: message.player2,
+        });
+
+        toast.success(`Now spectating: ${message.player1} vs ${message.player2}`);
+
+        // Notify game start callbacks so we navigate to the game page
+        this.onGameStartCallbacks.forEach((callback) => {
+          if (message.gameId) callback(message.gameId);
+        });
+        break;
+
       case "move_made":
       case "game_state": {
         const isBotGame = store.gameMode === "bot";
