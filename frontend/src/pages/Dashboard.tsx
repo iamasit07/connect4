@@ -1,40 +1,64 @@
-import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Gamepad2, Trophy, History, User } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { useAuthStore } from '@/features/auth/store/authStore';
-import { LiveGamesList } from '@/features/game/components/LiveGamesList';
-import { toast } from 'sonner';
+import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Gamepad2, Trophy, History, User } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/features/auth/store/authStore";
+import { useAuth } from "@/features/auth/hooks/useAuth";
+import { LiveGamesList } from "@/features/game/components/LiveGamesList";
+import { useGameSocket } from "@/features/game/hooks/useGameSocket";
+import { useCallback, useEffect } from "react";
 
 const Dashboard = () => {
   const { user } = useAuthStore();
+  const { checkAuth } = useAuth();
+  const navigate = useNavigate();
+
+  const onGameStart = useCallback(
+    (gameId: string) => {
+      navigate(`/game/${gameId}`);
+    },
+    [navigate],
+  );
+
+  const { spectateGame } = useGameSocket(onGameStart);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
   const quickActions = [
     {
-      title: 'Game History',
-      description: 'View past matches',
+      title: "Game History",
+      description: "View past matches",
       icon: History,
-      href: '/history',
-      color: 'bg-secondary text-secondary-foreground',
+      href: "/history",
+      color: "bg-secondary text-secondary-foreground",
     },
     {
-      title: 'Leaderboard',
-      description: 'See top players',
+      title: "Leaderboard",
+      description: "See top players",
       icon: Trophy,
-      href: '/leaderboard',
-      color: 'bg-disk-yellow/10 text-yellow-600',
+      href: "/leaderboard",
+      color: "bg-disk-yellow/10 text-yellow-600",
     },
     {
-      title: 'Profile',
-      description: 'Manage your account',
+      title: "Profile",
+      description: "Manage your account",
       icon: User,
-      href: '/profile',
-      color: 'bg-muted text-muted-foreground',
+      href: "/profile",
+      color: "bg-muted text-muted-foreground",
     },
   ];
 
   const handleSpectate = (gameId: string) => {
-    toast.info('Spectator mode coming soon!');
+    spectateGame(gameId);
   };
 
   return (
@@ -68,19 +92,25 @@ const Dashboard = () => {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Wins</CardDescription>
-            <CardTitle className="text-3xl text-green-500">{user?.wins || 0}</CardTitle>
+            <CardTitle className="text-3xl text-green-500">
+              {user?.wins || 0}
+            </CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Losses</CardDescription>
-            <CardTitle className="text-3xl text-destructive">{user?.losses || 0}</CardTitle>
+            <CardTitle className="text-3xl text-destructive">
+              {user?.losses || 0}
+            </CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Draws</CardDescription>
-            <CardTitle className="text-3xl text-muted-foreground">{user?.draws || 0}</CardTitle>
+            <CardTitle className="text-3xl text-muted-foreground">
+              {user?.draws || 0}
+            </CardTitle>
           </CardHeader>
         </Card>
       </motion.div>
@@ -105,7 +135,9 @@ const Dashboard = () => {
                     Play online against real players or practice with AI
                   </p>
                 </div>
-                <Button size="lg" className="w-full md:w-auto px-8">Play Now</Button>
+                <Button size="lg" className="w-full md:w-auto px-8">
+                  Play Now
+                </Button>
               </CardContent>
             </Card>
           </Link>
@@ -129,7 +161,9 @@ const Dashboard = () => {
               <Link to={action.href}>
                 <Card className="hover:ring-2 hover:ring-primary transition-all cursor-pointer h-full">
                   <CardHeader>
-                    <div className={`w-12 h-12 rounded-lg ${action.color} flex items-center justify-center mb-2`}>
+                    <div
+                      className={`w-12 h-12 rounded-lg ${action.color} flex items-center justify-center mb-2`}
+                    >
                       <action.icon className="h-6 w-6" />
                     </div>
                     <CardTitle className="text-lg">{action.title}</CardTitle>

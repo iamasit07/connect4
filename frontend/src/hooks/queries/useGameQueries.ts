@@ -30,8 +30,8 @@ export const useLiveGames = () =>
   useQuery({
     queryKey: gameKeys.live(),
     queryFn: async (): Promise<LiveGame[]> => {
-      // TODO: Implement /games/live endpoint on the backend
-      return [];
+      const { data } = await api.get<LiveGame[]>("/watch");
+      return data ?? [];
     },
     refetchInterval: 5000, // Poll every 5s
   });

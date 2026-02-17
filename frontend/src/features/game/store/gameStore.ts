@@ -83,6 +83,13 @@ interface GameStore {
   // Spectator actions
   setSpectatorMode: (isSpectator: boolean) => void;
   setSpectatorCount: (count: number) => void;
+  initSpectatorGame: (data: {
+    gameId: string;
+    board: Board;
+    currentTurn: PlayerNumber;
+    player1: string;
+    player2: string;
+  }) => void;
   
   // Rematch actions
   setRematchStatus: (status: RematchStatus) => void;
@@ -201,6 +208,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setSpectatorMode: (isSpectator) => set({ isSpectator }),
   
   setSpectatorCount: (count) => set({ spectatorCount: count }),
+
+  initSpectatorGame: ({ gameId, board, currentTurn, player1, player2 }) => set({
+    gameId,
+    board,
+    currentTurn,
+    myPlayer: 1, // spectators view from Player 1's perspective
+    opponent: player2,
+    gameStatus: 'playing',
+    winner: null,
+    winReason: null,
+    winningCells: null,
+    lastMove: null,
+    isSpectator: true,
+    gameMode: 'pvp',
+    rematchStatus: 'idle',
+    allowRematch: false,
+  }),
   
   setRematchStatus: (status) => set({ rematchStatus: status }),
   

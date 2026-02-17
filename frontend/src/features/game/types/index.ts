@@ -9,7 +9,9 @@ export type ClientMessage =
   | AbandonMessage
   | RequestRematchMessage
   | RematchResponseMessage
-  | CancelSearchMessage;
+  | CancelSearchMessage
+  | WatchGameMessage
+  | LeaveSpectateMessage;
 
 export interface InitMessage {
   type: "init";
@@ -43,6 +45,16 @@ export interface CancelSearchMessage {
   type: "cancel_search";
 }
 
+export interface WatchGameMessage {
+  type: "watch_game";
+  gameId: string;
+}
+
+export interface LeaveSpectateMessage {
+  type: "leave_spectate";
+  gameId: string;
+}
+
 // ============================================
 // WebSocket Server Messages (Received from Backend)
 // ============================================
@@ -60,6 +72,7 @@ export type ServerMessage =
   | RematchTimeoutMessage
   | RematchCancelledMessage
   | SpectatorCountMessage
+  | SpectateStartMessage
   | QueueTimeoutMessage
   | ErrorMessage;
 
@@ -100,6 +113,15 @@ export interface RematchCancelledMessage {
 export interface SpectatorCountMessage {
   type: "spectator_count";
   count: number;
+}
+
+export interface SpectateStartMessage {
+  type: "spectate_start";
+  gameId: string;
+  player1: string;
+  player2: string;
+  currentTurn: 1 | 2;
+  board: number[][];
 }
 
 export interface QueueJoinedMessage {
