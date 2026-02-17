@@ -78,7 +78,7 @@ const CompleteSignupPage = () => {
         password: formData.password,
       });
     } catch {
-      console.log('Error completing signup');
+      // Error handled by the mutation's onError callback
     }
   };
 

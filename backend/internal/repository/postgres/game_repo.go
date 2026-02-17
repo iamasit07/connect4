@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
@@ -36,11 +35,6 @@ type GameResult struct {
 
 // SaveGame saves a finished game and updates player stats transactionally
 func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username string, player2ID *int64, player2Username string, winnerID *int64, winnerUsername string, reason string, totalMoves, durationSeconds int, createdAt, finishedAt time.Time, boardState [][]int) error {
-	// DIAGNOSTIC: Check if user exists BEFORE transaction
-	var existsBefore bool
-	r.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM players WHERE id = $1)`, player1ID).Scan(&existsBefore)
-	log.Printf("[GAME-DIAG] BEFORE SaveGame: player1 %d exists=%v", player1ID, existsBefore)
-
 	tx, err := r.DB.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %v", err)
@@ -90,11 +84,6 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 		return err
 	}
 
-	// DIAGNOSTIC: Check after player1 stats update
-	var existsAfterP1 bool
-	tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM players WHERE id = $1)`, player1ID).Scan(&existsAfterP1)
-	log.Printf("[GAME-DIAG] AFTER updatePlayerStats: player1 %d exists=%v", player1ID, existsAfterP1)
-
 	if player2ID != nil {
 		if err := r.updatePlayerStatsTx(tx, *player2ID, p2Result, p2NewRating); err != nil {
 			return err
@@ -124,19 +113,9 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 		return fmt.Errorf("failed to upsert game record: %v", err)
 	}
 
-	// DIAGNOSTIC: Check after game insert
-	var existsAfterInsert bool
-	tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM players WHERE id = $1)`, player1ID).Scan(&existsAfterInsert)
-	log.Printf("[GAME-DIAG] AFTER game insert: player1 %d exists=%v", player1ID, existsAfterInsert)
-
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %v", err)
 	}
-
-	// DIAGNOSTIC: Check AFTER commit
-	var existsAfterCommit bool
-	r.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM players WHERE id = $1)`, player1ID).Scan(&existsAfterCommit)
-	log.Printf("[GAME-DIAG] AFTER COMMIT: player1 %d exists=%v", player1ID, existsAfterCommit)
 
 	return nil
 }

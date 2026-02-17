@@ -58,21 +58,6 @@ func main() {
 	}
 	log.Println("Database migration completed successfully")
 
-	// DIAGNOSTIC: Check for any triggers on the players table
-	rows, trigErr := db.Query(`SELECT trigger_name, event_manipulation, action_statement FROM information_schema.triggers WHERE event_object_table = 'players'`)
-	if trigErr == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var name, event, action string
-			rows.Scan(&name, &event, &action)
-			log.Printf("[DIAG] TRIGGER on players: name=%s, event=%s, action=%s", name, event, action)
-		}
-	}
-	// Also check how many players exist
-	var playerCount int
-	db.QueryRow(`SELECT COUNT(*) FROM players`).Scan(&playerCount)
-	log.Printf("[DIAG] Players table has %d rows", playerCount)
-
 	// 3. Initialize Repositories (Persistence Layer)
 	gameRepo := postgres.NewGameRepo(db)
 	userRepo := postgres.NewUserRepo(db)
@@ -119,6 +104,7 @@ func main() {
 	// 7. Setup Gin Router
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(middleware.SecurityHeadersMiddleware())
 	router.Use(middleware.CORSMiddleware())
 
 	// Auth middleware for protected routes

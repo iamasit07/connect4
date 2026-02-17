@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,6 +19,13 @@ import (
 	"github.com/iamasit07/4-in-a-row/backend/pkg/httputil"
 	"github.com/iamasit07/4-in-a-row/backend/pkg/useragent"
 )
+
+// safeInputPattern allows only alphanumeric characters, spaces, hyphens, underscores, and dots.
+// Rejects any HTML tags, script injections, or special characters.
+var safeInputPattern = regexp.MustCompile(`^[a-zA-Z0-9 _\-\.]+$`)
+
+// containsHTMLTags checks if the input contains any HTML-like tags.
+var htmlTagPattern = regexp.MustCompile(`<[^>]*>`)
 
 type Disconnector interface {
 	DisconnectUser(userID int64, reason string)
@@ -69,6 +77,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	if !safeInputPattern.MatchString(req.Username) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username contains invalid characters"})
+		return
+	}
+
 	if strings.ToUpper(req.Username) == "BOT" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Username 'BOT' is reserved"})
 		return
@@ -98,6 +111,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	req.Name = strings.TrimSpace(req.Name)
+	if htmlTagPattern.MatchString(req.Name) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Name contains invalid characters"})
+		return
+	}
+
 	userID, err := h.UserRepo.CreateUser(req.Username, req.Name, hashedPwd, req.Email, "", "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
@@ -244,12 +262,10 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	// 3. Fallback to Database
 	user, err := h.UserRepo.GetUserByID(userID)
 	if err != nil || user == nil {
-		log.Printf("[AUTH] /me: GetUserByID failed for user %d: err=%v, user=%v", userID, err, user)
+		log.Printf("[AUTH] /me: GetUserByID failed for user %d: %v", userID, err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
-
-	log.Printf("[AUTH] /me: Returning token for user %d, token length: %d", userID, len(token))
 
 	response := user.UserResponse()
 
@@ -288,6 +304,11 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	req.Name = strings.TrimSpace(req.Name)
 	if len(req.Name) > 100 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Name must be at most 100 characters"})
+		return
+	}
+
+	if htmlTagPattern.MatchString(req.Name) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Name contains invalid characters"})
 		return
 	}
 

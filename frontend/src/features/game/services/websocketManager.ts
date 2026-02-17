@@ -28,7 +28,6 @@ class WebSocketManager {
     const myConnectionId = ++this.currentConnectionId;
 
     if (this.socket?.readyState === WebSocket.OPEN) {
-      console.log("[WebSocket] Already connected");
       return;
     }
 
@@ -38,19 +37,12 @@ class WebSocketManager {
 
   private async createConnection(myConnectionId: number): Promise<void> {
     try {
-      console.log(
-        `[WebSocket] Connection attempt #${myConnectionId} starting...`,
-      );
-
       const response = await fetch(`${API_BASE_URL}/auth/me`, {
         credentials: "include",
       });
 
       // CHECK 1: If we became stale while fetching, stop immediately.
       if (myConnectionId !== this.currentConnectionId) {
-        console.log(
-          `[WebSocket] Stale attempt #${myConnectionId} aborted before socket creation.`,
-        );
         return;
       }
 
@@ -69,17 +61,11 @@ class WebSocketManager {
         ws.onopen = () => {
           // CHECK 2: If we became stale while opening, close and exit.
           if (myConnectionId !== this.currentConnectionId) {
-            console.log(
-              `[WebSocket] Stale attempt #${myConnectionId} aborted after open.`,
-            );
             ws.close();
             resolve();
             return;
           }
 
-          console.log(
-            `[WebSocket] Sending init for attempt #${myConnectionId}`,
-          );
           ws.send(JSON.stringify({ type: "init", jwt: data.token }));
 
           this.socket = ws;
@@ -96,9 +82,8 @@ class WebSocketManager {
           }
         };
 
-        ws.onclose = (event) => {
+        ws.onclose = () => {
           if (myConnectionId === this.currentConnectionId) {
-            console.log("[WebSocket] Disconnected:", event.code);
             this.socket = null;
             this.connectionPromise = null;
           }
@@ -133,7 +118,6 @@ class WebSocketManager {
     ws.onmessage = (event) => {
       try {
         const message: ServerMessage = JSON.parse(event.data);
-        console.log("[WebSocket] Received message:", message.type, message);
 
         // Handle message internally first
         this.handleMessage(message);
@@ -256,7 +240,7 @@ class WebSocketManager {
         break;
 
       default:
-        console.log("[WebSocket] Unhandled message type:", message.type);
+        break;
     }
   }
 }

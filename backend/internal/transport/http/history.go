@@ -40,8 +40,6 @@ func (h *HistoryHandler) GetHistory(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[HISTORY] Found %d games for user %d", len(rawHistory), userID)
-
 	response := make([]historyResponse, 0, len(rawHistory))
 	for _, game := range rawHistory {
 		opponent := game.Player2Username

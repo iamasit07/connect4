@@ -35,8 +35,6 @@ func AuthMiddleware(sv SessionValidator) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[AUTH] Success for %s (User: %d)", c.Request.URL.Path, claims.UserID)
-
 		// 3. Update Last Activity (async, best-effort)
 		go func(sid string) {
 			if err := sv.UpdateSessionActivity(sid); err != nil {

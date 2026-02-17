@@ -1,18 +1,67 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/iamasit07/4-in-a-row/backend/internal/config"
 	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
+	"github.com/iamasit07/4-in-a-row/backend/internal/repository/redis"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/matchmaking"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/session"
 )
+
+const (
+	// maxMessageSize is the maximum allowed WebSocket message payload (4KB).
+	// Prevents memory exhaustion from oversized messages.
+	maxMessageSize = 4096
+
+	// maxConnsPerIP limits concurrent WebSocket connections from a single IP.
+	maxConnsPerIP = 5
+
+	// writeTimeout is the deadline for writing a message to the peer.
+	writeTimeout = 10 * time.Second
+)
+
+// ipConnTracker tracks the number of active WebSocket connections per IP address.
+type ipConnTracker struct {
+	mu    sync.Mutex
+	conns map[string]int
+}
+
+func newIPConnTracker() *ipConnTracker {
+	return &ipConnTracker{conns: make(map[string]int)}
+}
+
+func (t *ipConnTracker) Increment(ip string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.conns[ip] >= maxConnsPerIP {
+		return false
+	}
+	t.conns[ip]++
+	return true
+}
+
+func (t *ipConnTracker) Decrement(ip string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.conns[ip] > 0 {
+		t.conns[ip]--
+	}
+	if t.conns[ip] == 0 {
+		delete(t.conns, ip)
+	}
+}
 
 // Handler manages WebSocket dependencies
 type Handler struct {
@@ -22,19 +71,33 @@ type Handler struct {
 	GameService    *game.Service
 	AuthService    *session.AuthService
 	Upgrader       websocket.Upgrader
+	ipTracker      *ipConnTracker
 }
 
 // NewHandler creates a new WebSocket handler with dependencies
 func NewHandler(cm *ConnectionManager, mq *matchmaking.MatchmakingQueue, sm *game.SessionManager, gs *game.Service, as *session.AuthService) *Handler {
+	allowedOrigins := config.AppConfig.AllowedOrigins
+
 	return &Handler{
 		ConnManager:    cm,
 		Matchmaking:    mq,
 		SessionManager: sm,
 		GameService:    gs,
 		AuthService:    as,
+		ipTracker:      newIPConnTracker(),
 		Upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
-				return true
+				origin := r.Header.Get("Origin")
+				if origin == "" {
+					return false
+				}
+				for _, allowed := range allowedOrigins {
+					if origin == allowed {
+						return true
+					}
+				}
+				log.Printf("[WS] Rejected WebSocket from disallowed origin: %s", origin)
+				return false
 			},
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -42,27 +105,62 @@ func NewHandler(cm *ConnectionManager, mq *matchmaking.MatchmakingQueue, sm *gam
 	}
 }
 
+// extractIP returns the client IP address from the request.
+func extractIP(r *http.Request) string {
+	// Trust X-Forwarded-For if behind a reverse proxy
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first (client) IP
+		for i := 0; i < len(xff); i++ {
+			if xff[i] == ',' {
+				return xff[:i]
+			}
+		}
+		return xff
+	}
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
+}
+
 // HandleWebSocket is the Gin handler that upgrades the connection
 func (h *Handler) HandleWebSocket(c *gin.Context) {
+	// Connection Exhaustion: enforce per-IP connection limit
+	clientIP := extractIP(c.Request)
+	if !h.ipTracker.Increment(clientIP) {
+		log.Printf("[WS] Connection limit exceeded for IP: %s", clientIP)
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many WebSocket connections"})
+		return
+	}
+
 	conn, err := h.Upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
+		h.ipTracker.Decrement(clientIP)
 		log.Printf("[WS] Upgrade error: %v", err)
 		return
 	}
 
-	h.handleConnection(conn)
+	// Memory DoS: enforce maximum incoming message size (4KB)
+	conn.SetReadLimit(maxMessageSize)
+
+	h.handleConnection(conn, clientIP)
 }
 
 // handleConnection manages the lifecycle of a single WebSocket connection
-func (h *Handler) handleConnection(conn *websocket.Conn) {
+func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
+	// Decrement IP connection count when this connection closes
+	defer h.ipTracker.Decrement(clientIP)
+
 	// Set read deadline to detect stale connections
 	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 
-	// Keep-alive pinger
+	// Keep-alive pinger with write deadline
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
+			conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -106,8 +204,6 @@ func (h *Handler) handleConnection(conn *websocket.Conn) {
 		username = claims.Username
 		sessionID = claims.SessionID // Store session ID for subsequent checks
 
-		log.Printf("[WS] Connection initialized for user: %s (ID: %d)", username, userID)
-
 		h.ConnManager.AddConnection(userID, conn, username)
 	} else {
 		log.Printf("[WS] Missing initialization or token")
@@ -117,7 +213,6 @@ func (h *Handler) handleConnection(conn *websocket.Conn) {
 
 	// 2. Cleanup on exit
 	defer func() {
-		log.Printf("[WS] Connection closed for user %s", username)
 		h.Matchmaking.RemovePlayer(userID)
 
 		// Notify game session if active
@@ -222,6 +317,19 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 	case "find_match":
 		difficulty := msg.Difficulty
 
+		// Rate-limit find_match: max 1 request per 3 seconds per user
+		rateLimitKey := fmt.Sprintf("ratelimit:find_match:%d", userID)
+		if !h.checkRateLimit(rateLimitKey, 3*time.Second) {
+			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Too many requests. Please wait."})
+			return
+		}
+
+		// Enforce one active queue/game per user
+		if _, inGame := h.SessionManager.GetSessionByUserID(userID); inGame {
+			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "You are already in a game"})
+			return
+		}
+
 		// Clean up any existing game session before joining queue
 		// If game is active, it's abandoned. If finished (rematch window), it's cleaned up.
 		h.SessionManager.ForceCleanupForUser(userID, h.ConnManager)
@@ -299,4 +407,19 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 			gameSession.RemoveSpectator(userID)
 		}
 	}
+}
+
+// checkRateLimit uses Redis to enforce a per-key cooldown.
+// Returns true if the action is allowed, false if rate-limited.
+func (h *Handler) checkRateLimit(key string, window time.Duration) bool {
+	if redis.RedisClient == nil || !redis.IsRedisEnabled() {
+		return true // If Redis is unavailable, allow (fail open)
+	}
+	ctx := context.Background()
+	ok, err := redis.RedisClient.SetNX(ctx, key, 1, window).Result()
+	if err != nil {
+		log.Printf("[WS] Rate limit check failed for key %s: %v", key, err)
+		return true // Fail open on Redis error
+	}
+	return ok
 }

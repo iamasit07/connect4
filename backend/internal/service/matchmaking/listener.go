@@ -15,13 +15,10 @@ func MatchMakingListener(queue *MatchmakingQueue, cm game.ConnectionManagerInter
 		player2ID := match.Player2ID
 		player2Username := match.Player2Username
 
-		log.Printf("[MATCHMAKING] Match found: %s (ID: %d) vs %s (ID: %v)",
-			player1Username, player1ID, player2Username, player2ID)
-
 		// CreateSession will handle sending game_start messages
 		session := sm.CreateSession(player1ID, player1Username, player2ID, player2Username, match.BotDifficulty, cm)
 
-		log.Printf("Match started between %s (ID: %d) and %s (ID: %v) with game ID %s\n",
-			player1Username, player1ID, player2Username, player2ID, session.GameID)
+		log.Printf("[MATCHMAKING] Match started: %s vs %s (game: %s)",
+			player1Username, player2Username, session.GameID)
 	}
 }

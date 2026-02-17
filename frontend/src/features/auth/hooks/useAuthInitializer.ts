@@ -12,8 +12,7 @@ export const useAuthInitializer = () => {
         setLoading(true);
         const response = await api.get<User>('/auth/me');
         setUser(response.data);
-      } catch (err) {
-        console.log('Auth check failed (expected if not logged in):', err);
+      } catch {
         logout();
       } finally {
         setLoading(false);

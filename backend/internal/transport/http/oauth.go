@@ -69,7 +69,6 @@ func (h *OAuthHandler) GoogleCallback(c *gin.Context) {
 		}
 
 		// Security: Invalidate old sessions
-		log.Printf("[OAUTH] Deactivating all sessions for user %d (%s)", user.ID, user.Username)
 		h.SessionRepo.DeactivateAllUserSessions(user.ID)
 		if h.ConnManager != nil {
 			h.ConnManager.DisconnectUser(user.ID, "Logged in from another device via Google")
@@ -81,14 +80,12 @@ func (h *OAuthHandler) GoogleCallback(c *gin.Context) {
 		ipAddress := useragent.ExtractIPAddress(c.Request)
 		expiresAt := time.Now().Add(30 * 24 * time.Hour)
 
-		log.Printf("[OAUTH] Creating new session for user %d: sessionID=%s", user.ID, sessionID)
 		err = h.SessionRepo.CreateSession(user.ID, sessionID, deviceInfo, ipAddress, expiresAt)
 		if err != nil {
 			log.Printf("[OAUTH] Failed to create session: %v", err)
 			c.Redirect(http.StatusTemporaryRedirect, config.AppConfig.FrontendURL+"/login?error=server_error")
 			return
 		}
-		log.Printf("[OAUTH] Session created successfully for user %d", user.ID)
 
 		// Generate Login JWT
 		jwtToken, err := auth.GenerateJWT(user.ID, user.Username, sessionID)

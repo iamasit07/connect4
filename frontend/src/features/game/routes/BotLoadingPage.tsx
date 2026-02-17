@@ -12,7 +12,6 @@ const BotLoadingPage = () => {
 
   const onGameStart = useCallback((gameId: string) => {
     gameFound.current = true;
-    console.log('[BotLoadingPage] Game started with ID:', gameId);
     navigate(`/game/${gameId}`);
   }, [navigate]);
 

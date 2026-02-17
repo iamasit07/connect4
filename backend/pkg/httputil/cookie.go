@@ -25,7 +25,7 @@ func SetAuthCookie(w http.ResponseWriter, token string) {
 	}
 
 	if isProduction {
-		cookie.SameSite = http.SameSiteNoneMode
+		cookie.SameSite = http.SameSiteStrictMode
 		cookie.Secure = true
 	} else {
 		cookie.SameSite = http.SameSiteLaxMode
@@ -47,7 +47,7 @@ func ClearAuthCookie(w http.ResponseWriter) {
 	}
 
 	if isProduction {
-		cookie.SameSite = http.SameSiteNoneMode
+		cookie.SameSite = http.SameSiteStrictMode
 	} else {
 		cookie.SameSite = http.SameSiteLaxMode
 	}
