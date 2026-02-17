@@ -3,7 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Board } from "../components/Board";
 import { GameInfo } from "../components/GameInfo";
 import { GameControls } from "../components/GameControls";
-import { GameResultBanner } from "../components/GameResultBanner";
 import { GameEndActions } from "../components/GameEndActions";
 import { RematchOverlay } from "../components/RematchRequest";
 import { useGameSocket } from "../hooks/useGameSocket";
@@ -115,7 +114,6 @@ const GamePage = () => {
       <div className="w-full max-w-[min(90vw,500px)] flex flex-col h-full py-4 gap-4">
         {/* Header Area: Banner or Info */}
         <div className="flex-shrink-0 w-full min-h-[60px] flex flex-col justify-end">
-          <GameResultBanner />
           <GameInfo />
         </div>
 

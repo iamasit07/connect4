@@ -27,6 +27,7 @@ export const WS_URL = BASE_WS_URL ? `${BASE_WS_URL}/ws` : '/ws';
 export const BOARD_ROWS = 6;
 export const BOARD_COLS = 7;
 export const WINNING_LENGTH = 4;
+export const TURN_TIME_LIMIT = 900;
 
 export const DISK_DROP_DURATION = 500;
 export const BOT_MOVE_DELAY = 800;

@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Cell } from "./Cell";
 import { ColumnIndicator } from "./ColumnIndicator";
 import { useGameStore } from "../store/gameStore";
-import { BOARD_COLS } from "@/lib/config";
+import { BOARD_COLS, BOARD_ROWS } from "@/lib/config";
 
 interface BoardProps {
   onColumnClick: (col: number) => void;
@@ -22,6 +22,20 @@ export const Board = ({ onColumnClick }: BoardProps) => {
     canDropInColumn,
     isMyTurn,
   } = useGameStore();
+
+  const getLowestEmptyRow = useCallback(
+    (col: number) => {
+      for (let row = BOARD_ROWS - 1; row >= 0; row--) {
+        if (board[row][col] === 0) {
+          return row;
+        }
+      }
+      return -1;
+    },
+    [board],
+  );
+
+  const ghostDiskRow = hoveredColumn !== null ? getLowestEmptyRow(hoveredColumn) : -1;
 
   const handleColumnClick = useCallback(
     (col: number) => {
@@ -83,8 +97,15 @@ export const Board = ({ onColumnClick }: BoardProps) => {
                   col={colIndex}
                   isWinning={isWinningCell(rowIndex, colIndex)}
                   isLastMove={isLastMoveCell(rowIndex, colIndex)}
-                  isHovered={hoveredColumn === colIndex && cell === 0}
+                  isHovered={
+                    hoveredColumn === colIndex &&
+                    rowIndex === ghostDiskRow &&
+                    cell === 0
+                  }
+                  hoverPlayer={currentTurn}
                   onClick={() => handleColumnClick(colIndex)}
+                  onMouseEnter={() => setHoveredColumn(colIndex)}
+                  onMouseLeave={() => setHoveredColumn(null)}
                 />
               )),
             )}

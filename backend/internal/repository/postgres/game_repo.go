@@ -108,7 +108,7 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 		board_state = EXCLUDED.board_state;
 	`
 
-	_, err = tx.Exec(query, gameID, player1ID, player1Username, player2ID, player2Username, winnerID, winnerUsername, reason, totalMoves, durationSeconds, createdAt, finishedAt, boardJSON)
+	_, err = tx.Exec(query, gameID, player1ID, player1Username, player2ID, player2Username, winnerID, winnerUsername, reason, totalMoves, durationSeconds, createdAt, finishedAt, string(boardJSON))
 	if err != nil {
 		return fmt.Errorf("failed to upsert game record: %v", err)
 	}

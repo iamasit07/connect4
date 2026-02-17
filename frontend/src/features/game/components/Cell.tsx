@@ -9,7 +9,10 @@ interface CellProps {
   isWinning?: boolean;
   isLastMove?: boolean;
   isHovered?: boolean;
+  hoverPlayer?: number | null;
   onClick?: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
 export const Cell = ({
@@ -19,13 +22,18 @@ export const Cell = ({
   isWinning = false,
   isLastMove = false,
   isHovered = false,
+  hoverPlayer = null,
   onClick,
+  onMouseEnter,
+  onMouseLeave,
 }: CellProps) => {
   return (
     <motion.div
       className="aspect-square p-0.5 sm:p-1"
       whileHover={{ scale: value === 0 ? 1.05 : 1 }}
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <div
         className={`
@@ -33,7 +41,6 @@ export const Cell = ({
           bg-board-slot
           flex items-center justify-center
           transition-all duration-200
-          ${isHovered && value === 0 ? "ring-2 ring-white/40 ring-offset-2 ring-offset-board" : ""}
         `}
         style={{
           boxShadow:
@@ -48,6 +55,11 @@ export const Cell = ({
               isNew={isLastMove}
               row={row}
             />
+          </div>
+        )}
+        {value === 0 && isHovered && hoverPlayer && (
+          <div className="w-[92%] h-[92%] opacity-50">
+            <Disk player={hoverPlayer as 1 | 2} />
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { Disk } from './Disk';
 
 interface ColumnIndicatorProps {
   columns: number;
@@ -20,10 +20,10 @@ export const ColumnIndicator = ({
   onColumnHover,
   canDropInColumn,
 }: ColumnIndicatorProps) => {
-  const isRed = currentPlayer === 1;
+
   
   return (
-    <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2 mb-2">
+    <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2 mb-2 px-1.5 sm:px-3 md:px-4">
       {Array.from({ length: columns }).map((_, col) => {
         const canDrop = canDropInColumn(col);
         const isHovered = hoveredColumn === col;
@@ -34,7 +34,7 @@ export const ColumnIndicator = ({
             className={`
               aspect-square flex items-center justify-center cursor-pointer
               transition-all duration-200
-              ${isMyTurn && canDrop ? 'opacity-100' : 'opacity-30 cursor-not-allowed'}
+              ${isMyTurn && canDrop ? 'opacity-100' : 'opacity-0'}
             `}
             onClick={() => isMyTurn && canDrop && onColumnClick(col)}
             onMouseEnter={() => isMyTurn && canDrop && onColumnHover(col)}
@@ -43,21 +43,13 @@ export const ColumnIndicator = ({
             <AnimatePresence>
               {isHovered && isMyTurn && canDrop && (
                 <motion.div
-                  initial={{ opacity: 0, y: -10 }}
+                  initial={{ opacity: 0, y: -20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="flex flex-col items-center"
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="w-full h-full p-[10%]"
                 >
-                  <div 
-                    className={`
-                      w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full
-                      ${isRed ? 'bg-disk-red/80' : 'bg-disk-yellow/80'}
-                      flex items-center justify-center
-                      animate-bounce-subtle
-                    `}
-                  >
-                    <ChevronDown className="w-5 h-5 text-white" />
-                  </div>
+                  <Disk player={currentPlayer} isNew={false} />
                 </motion.div>
               )}
             </AnimatePresence>
