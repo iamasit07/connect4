@@ -88,7 +88,7 @@ const GamePage = () => {
   // Show loading if game not started yet
   if (gameStatus !== "playing" && gameStatus !== "finished") {
     return (
-      <div className="h-dvh bg-background flex items-center justify-center">
+      <div className="flex-1 bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading game...</p>
@@ -98,24 +98,38 @@ const GamePage = () => {
   }
 
   return (
-    <div className="h-dvh bg-background flex flex-col items-center justify-center overflow-hidden p-1 sm:p-2 md:p-4">
-      <GameResultBanner />
-      <GameInfo />
-      <div className="flex-1 w-full min-h-0 flex flex-col items-center justify-center overflow-hidden relative">
-        <Board onColumnClick={handleColumnClick} />
-        {rematchStatus === "received" && (
-          <RematchOverlay
-            onAccept={handleAcceptRematch}
-            onDecline={handleDeclineRematch}
-            opponentName={opponent || "Opponent"}
+    <div className="flex-1 bg-background flex items-center justify-center overflow-hidden h-full">
+      <div className="w-full max-w-[min(90vw,500px)] flex flex-col h-full py-4 gap-4">
+        {/* Header Area: Banner or Info */}
+        <div className="flex-shrink-0 w-full min-h-[60px] flex flex-col justify-end">
+          <GameResultBanner />
+          <GameInfo />
+        </div>
+
+        {/* Board Area: Flexible */}
+        <div className="flex-1 w-full min-h-0 flex flex-col items-center justify-center relative">
+          <Board onColumnClick={handleColumnClick} />
+          {rematchStatus === "received" && (
+            <RematchOverlay
+              onAccept={handleAcceptRematch}
+              onDecline={handleDeclineRematch}
+              opponentName={opponent || "Opponent"}
+            />
+          )}
+        </div>
+
+        {/* Footer Area: Fixed height controls */}
+        <div className="flex-shrink-0 w-full flex flex-col gap-2 pb-safe">
+          <GameControls
+            onSurrender={handleSurrender}
+            isPlaying={gameStatus === "playing"}
           />
-        )}
+          <GameEndActions
+            onPlayAgain={handlePlayAgain}
+            onGoHome={handleGoHome}
+          />
+        </div>
       </div>
-      <GameControls
-        onSurrender={handleSurrender}
-        isPlaying={gameStatus === "playing"}
-      />
-      <GameEndActions onPlayAgain={handlePlayAgain} onGoHome={handleGoHome} />
     </div>
   );
 };

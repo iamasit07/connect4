@@ -1,5 +1,5 @@
-import { Flag } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Flag } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,11 +23,7 @@ export const GameControls = ({ onSurrender, isPlaying }: GameControlsProps) => {
       {isPlaying && (
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="gap-2"
-            >
+            <Button variant="destructive" size="sm" className="gap-2">
               <Flag className="w-4 h-4" />
               Surrender
             </Button>
@@ -36,7 +32,8 @@ export const GameControls = ({ onSurrender, isPlaying }: GameControlsProps) => {
             <AlertDialogHeader>
               <AlertDialogTitle>Surrender the game?</AlertDialogTitle>
               <AlertDialogDescription>
-                This action cannot be undone. You will lose the game and your opponent will be declared the winner.
+                This action cannot be undone. You will lose the game and your
+                opponent will be declared the winner.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
