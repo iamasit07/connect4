@@ -1,14 +1,14 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, Check, X, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { RotateCcw, Check, X, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 interface RematchRequestProps {
   onSendRequest: () => void;
   onAcceptRequest: () => void;
   onDeclineRequest: () => void;
-  rematchStatus: 'idle' | 'sent' | 'received' | 'accepted' | 'declined';
+  rematchStatus: "idle" | "sent" | "received" | "accepted" | "declined";
   opponentName: string;
 }
 
@@ -19,11 +19,11 @@ export const RematchRequest = ({
   rematchStatus,
   opponentName,
 }: RematchRequestProps) => {
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(10);
 
   useEffect(() => {
-    if (rematchStatus === 'sent' || rematchStatus === 'received') {
-      setCountdown(30);
+    if (rematchStatus === "sent" || rematchStatus === "received") {
+      setCountdown(10);
       const interval = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
@@ -38,13 +38,12 @@ export const RematchRequest = ({
   }, [rematchStatus]);
 
   useEffect(() => {
-    if (countdown === 0 && rematchStatus === 'received') {
-      onDeclineRequest();
-      toast.info('Rematch request expired');
+    if (countdown === 0 && rematchStatus === "received") {
+      toast.info("Rematch request expired");
     }
-  }, [countdown, rematchStatus, onDeclineRequest]);
+  }, [countdown, rematchStatus]);
 
-  if (rematchStatus === 'idle') {
+  if (rematchStatus === "idle") {
     return (
       <Button
         onClick={onSendRequest}
@@ -58,7 +57,19 @@ export const RematchRequest = ({
     );
   }
 
-  if (rematchStatus === 'sent') {
+  if (rematchStatus === "sent") {
+    if (countdown === 0) {
+      return (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-muted-foreground text-sm"
+        >
+          Rematch request timed out
+        </motion.div>
+      );
+    }
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -73,40 +84,46 @@ export const RematchRequest = ({
     );
   }
 
-  if (rematchStatus === 'received') {
+  if (rematchStatus === "received") {
+    const expired = countdown === 0;
+
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col items-center gap-3 p-4 rounded-xl bg-primary/10 ring-2 ring-primary"
+        className="flex flex-col items-center gap-2 sm:gap-3 p-2 sm:p-4 rounded-xl bg-primary/10 ring-2 ring-primary"
       >
-        <p className="text-sm font-medium">
-          {opponentName} wants a rematch! ({countdown}s)
+        <p className="text-xs sm:text-sm font-medium">
+          {expired
+            ? "Rematch request expired"
+            : `${opponentName} wants a rematch! (${countdown}s)`}
         </p>
-        <div className="flex gap-2">
-          <Button
-            onClick={onAcceptRequest}
-            size="sm"
-            className="gap-1"
-          >
-            <Check className="w-4 h-4" />
-            Accept
-          </Button>
-          <Button
-            onClick={onDeclineRequest}
-            variant="outline"
-            size="sm"
-            className="gap-1"
-          >
-            <X className="w-4 h-4" />
-            Decline
-          </Button>
-        </div>
+        {!expired && (
+          <div className="flex gap-2">
+            <Button
+              onClick={onAcceptRequest}
+              size="sm"
+              className="h-7 px-2 sm:h-9 sm:px-4 gap-1 text-xs sm:text-sm"
+            >
+              <Check className="w-3 h-3 sm:w-4 sm:h-4" />
+              Accept
+            </Button>
+            <Button
+              onClick={onDeclineRequest}
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 sm:h-9 sm:px-4 gap-1 text-xs sm:text-sm"
+            >
+              <X className="w-3 h-3 sm:w-4 sm:h-4" />
+              Decline
+            </Button>
+          </div>
+        )}
       </motion.div>
     );
   }
 
-  if (rematchStatus === 'accepted') {
+  if (rematchStatus === "accepted") {
     return (
       <motion.div
         initial={{ opacity: 0 }}
@@ -119,7 +136,7 @@ export const RematchRequest = ({
     );
   }
 
-  if (rematchStatus === 'declined') {
+  if (rematchStatus === "declined") {
     return (
       <motion.div
         initial={{ opacity: 0 }}

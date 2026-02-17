@@ -41,6 +41,8 @@ export type ServerMessage =
   | RematchRequestMessage
   | RematchAcceptedMessage
   | RematchDeclinedMessage
+  | RematchTimeoutMessage
+  | RematchCancelledMessage
   | SpectatorCountMessage
   | QueueTimeoutMessage
   | ErrorMessage;
@@ -65,6 +67,18 @@ export interface RematchAcceptedMessage {
 
 export interface RematchDeclinedMessage {
   type: 'rematch_declined';
+  allowRematch?: boolean;
+}
+
+export interface RematchTimeoutMessage {
+  type: 'rematch_timeout';
+  message: string;
+  allowRematch?: boolean;
+}
+
+export interface RematchCancelledMessage {
+  type: 'rematch_cancelled';
+  message: string;
 }
 
 export interface SpectatorCountMessage {
@@ -118,6 +132,7 @@ export interface GameOverMessage {
   board?: number[][];
   newRating?: number;
   winningCells?: { row: number; col: number }[];
+  allowRematch?: boolean;
 }
 
 export interface ErrorMessage {

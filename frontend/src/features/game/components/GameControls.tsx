@@ -19,7 +19,7 @@ interface GameControlsProps {
 
 export const GameControls = ({ onSurrender, isPlaying }: GameControlsProps) => {
   return (
-    <div className="flex justify-center gap-4 mt-8">
+    <div className="flex justify-center gap-4 mt-2 sm:mt-4 flex-shrink-0">
       {isPlaying && (
         <AlertDialog>
           <AlertDialogTrigger asChild>
