@@ -113,6 +113,7 @@ func main() {
 	historyHandler := transportHttp.NewHistoryHandler(gameRepo)
 	oauthHandler := transportHttp.NewOAuthHandler(userRepo, sessionRepo, &cfg.OAuthConfig, connManager)
 	wsHandler := websocket.NewHandler(connManager, matchmakingQueue, sessionManager, gameService, authService)
+	watchHandler := transportHttp.NewWatchHandler(sessionManager)
 
 	// 7. Setup Router
 	mux := http.NewServeMux()
@@ -140,6 +141,9 @@ func main() {
 	mux.HandleFunc("/api/history", protected(historyHandler.GetHistory))
 	mux.HandleFunc("/api/history/", protected(historyHandler.GetGameDetails))
 	mux.HandleFunc("/api/sessions", protected(authHandler.GetSessionHistory))
+
+	// Watch / Spectator Routes
+	mux.HandleFunc("/api/watch", protected(watchHandler.GetLiveGames))
 
 	mux.HandleFunc("/ws", wsHandler.HandleWebSocket)
 

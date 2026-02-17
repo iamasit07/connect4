@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
 )
 
 type GameRepo struct {
@@ -48,16 +50,43 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 
 	isDraw := (winnerID == nil)
 
-	// Update player1 stats
-	var p1Result string
+	// Fetch current ratings for Elo calculation
+	p1Rating, err := r.getPlayerRatingTx(tx, player1ID)
+	if err != nil {
+		return err
+	}
+
+	// Determine opponent rating (use default 1000 for bot games)
+	p2Rating := 1000
+	if player2ID != nil {
+		p2Rating, err = r.getPlayerRatingTx(tx, *player2ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Calculate new Elo ratings
+	var p1NewRating, p2NewRating int
+	var p1Result, p2Result string
 	if isDraw {
 		p1Result = "draw"
+		p2Result = "draw"
+		p1NewRating = domain.CalculateElo(p1Rating, p2Rating, 0.5)
+		p2NewRating = domain.CalculateElo(p2Rating, p1Rating, 0.5)
 	} else if *winnerID == player1ID {
 		p1Result = "won"
+		p2Result = "lost"
+		p1NewRating = domain.CalculateElo(p1Rating, p2Rating, 1.0)
+		p2NewRating = domain.CalculateElo(p2Rating, p1Rating, 0.0)
 	} else {
 		p1Result = "lost"
+		p2Result = "won"
+		p1NewRating = domain.CalculateElo(p1Rating, p2Rating, 0.0)
+		p2NewRating = domain.CalculateElo(p2Rating, p1Rating, 1.0)
 	}
-	if err := r.updatePlayerStatsTx(tx, player1ID, p1Result); err != nil {
+
+	// Update player1 stats with Elo-calculated rating
+	if err := r.updatePlayerStatsTx(tx, player1ID, p1Result, p1NewRating); err != nil {
 		return err
 	}
 
@@ -67,20 +96,11 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 	log.Printf("[GAME-DIAG] AFTER updatePlayerStats: player1 %d exists=%v", player1ID, existsAfterP1)
 
 	if player2ID != nil {
-		var p2Result string
-		if isDraw {
-			p2Result = "draw"
-		} else if *winnerID == *player2ID {
-			p2Result = "won"
-		} else {
-			p2Result = "lost"
-		}
-		if err := r.updatePlayerStatsTx(tx, *player2ID, p2Result); err != nil {
+		if err := r.updatePlayerStatsTx(tx, *player2ID, p2Result, p2NewRating); err != nil {
 			return err
 		}
 	}
 
-	// Insert or update game record (UPSERT to handle race conditions)
 	boardJSON, err := json.Marshal(boardState)
 	if err != nil {
 		return fmt.Errorf("failed to marshal board state: %v", err)
@@ -88,7 +108,7 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 
 	query := `
 	INSERT INTO game (game_id, player1_id, player1_username, player2_id, player2_username, winner_id, winner_username, reason, total_moves, duration_seconds, created_at, finished_at, board_state)
-	VALUES ($1::text, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	VALUES (CAST($1 as TEXT), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	ON CONFLICT (game_id) DO UPDATE SET
 		winner_id = EXCLUDED.winner_id,
 		winner_username = EXCLUDED.winner_username,
@@ -121,17 +141,12 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 	return nil
 }
 
-func (r *GameRepo) updatePlayerStatsTx(tx *sql.Tx, userID int64, result string) error {
-	var wonInc, drawnInc, ratingDelta int
-	switch result {
-	case "won":
+func (r *GameRepo) updatePlayerStatsTx(tx *sql.Tx, userID int64, result string, newRating int) error {
+	var wonInc, drawnInc int
+	if result == "won" {
 		wonInc = 1
-		ratingDelta = 25
-	case "draw":
+	} else if result == "draw" {
 		drawnInc = 1
-		ratingDelta = 10
-	default: // "lost"
-		ratingDelta = -10
 	}
 
 	query := `
@@ -139,14 +154,24 @@ func (r *GameRepo) updatePlayerStatsTx(tx *sql.Tx, userID int64, result string) 
 	SET games_played = games_played + 1,
 	    games_won = games_won + $2,
 	    games_drawn = games_drawn + $3,
-	    rating = GREATEST(0, rating + $4)
+	    rating = $4
 	WHERE id = $1;
 	`
-	_, err := tx.Exec(query, userID, wonInc, drawnInc, ratingDelta)
+	_, err := tx.Exec(query, userID, wonInc, drawnInc, newRating)
 	if err != nil {
 		return fmt.Errorf("failed to update player stats in transaction: %v", err)
 	}
 	return nil
+}
+
+// getPlayerRatingTx fetches the current rating for a player within a transaction
+func (r *GameRepo) getPlayerRatingTx(tx *sql.Tx, userID int64) (int, error) {
+	var rating int
+	err := tx.QueryRow(`SELECT rating FROM players WHERE id = $1`, userID).Scan(&rating)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get player rating: %v", err)
+	}
+	return rating, nil
 }
 
 // GetGameByID retrieves game details from the database by gameID
@@ -158,11 +183,11 @@ func (r *GameRepo) GetGameByID(gameID string) (*GameResult, error) {
 	FROM game 
 	WHERE game_id = $1::text;
 	`
-	
+
 	var result GameResult
 	var player2ID, winnerID sql.NullInt64
 	var winnerUsername sql.NullString
-	
+
 	err := r.DB.QueryRow(query, gameID).Scan(
 		&result.GameID,
 		&result.Player1ID,
@@ -177,14 +202,14 @@ func (r *GameRepo) GetGameByID(gameID string) (*GameResult, error) {
 		&result.CreatedAt,
 		&result.FinishedAt,
 	)
-	
+
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get game by ID: %v", err)
 	}
-	
+
 	if player2ID.Valid {
 		id := player2ID.Int64
 		result.Player2ID = &id
@@ -196,7 +221,7 @@ func (r *GameRepo) GetGameByID(gameID string) (*GameResult, error) {
 	if winnerUsername.Valid {
 		result.WinnerUsername = winnerUsername.String
 	}
-	
+
 	return &result, nil
 }
 
@@ -210,19 +235,19 @@ func (r *GameRepo) GetUserGameHistory(userID int64) ([]GameResult, error) {
 	WHERE player1_id = $1 OR player2_id = $1
 	ORDER BY finished_at DESC;
 	`
-	
+
 	rows, err := r.DB.Query(query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query game history: %v", err)
 	}
 	defer rows.Close()
-	
+
 	var games []GameResult
 	for rows.Next() {
 		var result GameResult
 		var player2ID, winnerID sql.NullInt64
 		var winnerUsername sql.NullString
-		
+
 		err := rows.Scan(
 			&result.GameID,
 			&result.Player1ID,
@@ -237,11 +262,11 @@ func (r *GameRepo) GetUserGameHistory(userID int64) ([]GameResult, error) {
 			&result.CreatedAt,
 			&result.FinishedAt,
 		)
-		
+
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan game row: %v", err)
 		}
-		
+
 		if player2ID.Valid {
 			id := player2ID.Int64
 			result.Player2ID = &id
@@ -253,7 +278,7 @@ func (r *GameRepo) GetUserGameHistory(userID int64) ([]GameResult, error) {
 		if winnerUsername.Valid {
 			result.WinnerUsername = winnerUsername.String
 		}
-		
+
 		games = append(games, result)
 	}
 	return games, nil
@@ -262,7 +287,7 @@ func (r *GameRepo) GetUserGameHistory(userID int64) ([]GameResult, error) {
 // GetGameBoard retrieves the board state for a game from the database
 func (r *GameRepo) GetGameBoard(gameID string) ([][]int, error) {
 	query := `SELECT board_state FROM game WHERE game_id = $1::text;`
-	
+
 	var boardJSON []byte
 	err := r.DB.QueryRow(query, gameID).Scan(&boardJSON)
 	if err == sql.ErrNoRows {
@@ -276,7 +301,7 @@ func (r *GameRepo) GetGameBoard(gameID string) ([][]int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get board state: %v", err)
 	}
-	
+
 	if boardJSON == nil {
 		board := make([][]int, 6)
 		for i := range board {
@@ -284,11 +309,11 @@ func (r *GameRepo) GetGameBoard(gameID string) ([][]int, error) {
 		}
 		return board, nil
 	}
-	
+
 	var board [][]int
 	if err := json.Unmarshal(boardJSON, &board); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal board state: %v", err)
 	}
-	
+
 	return board, nil
 }

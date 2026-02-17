@@ -19,6 +19,7 @@ type GameSession struct {
 	Player2Username     string
 	Game                *domain.Game
 	PlayerMapping       map[int64]domain.PlayerID // userID → PlayerID
+	Spectators          map[int64]bool            // userID → true
 	Reason              string
 	CreatedAt           time.Time
 	FinishedAt          time.Time
@@ -26,6 +27,7 @@ type GameSession struct {
 	PostGameTimer       *time.Timer // 30-second window for rematch after game ends
 	RematchRequester    *int64      // userID of player who requested rematch
 	RematchRequestTimer *time.Timer // 10-second window to accept rematch request
+	TurnTimer           *time.Timer // 30-minute turn timer
 	mu                  sync.Mutex
 	repo                GameRepository
 	sessionManager      *SessionManager
@@ -140,6 +142,79 @@ func (sm *SessionManager) removeSessionLocked(gameID string) error {
 	return nil
 }
 
+// RemoveSpectatorFromAll removes a user from the spectators list of all active sessions
+func (sm *SessionManager) RemoveSpectatorFromAll(userID int64) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	for _, session := range sm.Session {
+		session.RemoveSpectator(userID)
+	}
+}
+
+// ActiveGameInfo represents a live game for the /watch endpoint
+type ActiveGameInfo struct {
+	GameID         string `json:"gameId"`
+	Player1        string `json:"player1Username"`
+	Player2        string `json:"player2Username"`
+	MoveCount      int    `json:"moveCount"`
+	SpectatorCount int    `json:"spectatorCount"`
+	StartedAt      string `json:"startedAt"`
+}
+
+// GetActiveGames returns a list of all active (non-finished) PvP game sessions
+func (sm *SessionManager) GetActiveGames() []ActiveGameInfo {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	games := make([]ActiveGameInfo, 0)
+	for _, session := range sm.Session {
+		// Only show active PvP games (not bot games, not finished)
+		if session.IsBot() || session.Game.IsFinished() {
+			continue
+		}
+		games = append(games, ActiveGameInfo{
+			GameID:         session.GameID,
+			Player1:        session.Player1Username,
+			Player2:        session.Player2Username,
+			MoveCount:      session.Game.MoveCount,
+			SpectatorCount: len(session.Spectators),
+			StartedAt:      session.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+	return games
+}
+
+// IsSpectator checks whether a user is a spectator in a specific game session
+func (sm *SessionManager) IsSpectator(userID int64, gameID string) bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	session, exists := sm.Session[gameID]
+	if !exists {
+		return false
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	return session.Spectators[userID]
+}
+
+// IsSpectatorAnywhere checks whether a user is spectating any game
+func (sm *SessionManager) IsSpectatorAnywhere(userID int64) bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	for _, session := range sm.Session {
+		session.mu.Lock()
+		isSpec := session.Spectators[userID]
+		session.mu.Unlock()
+		if isSpec {
+			return true
+		}
+	}
+	return false
+}
+
 func (sm *SessionManager) ForceCleanupForUser(userID int64, conn ConnectionManagerInterface) {
 	session, exists := sm.GetSessionByUserID(userID)
 	if !exists {
@@ -219,6 +294,37 @@ func (gs *GameSession) cleanupConnections(conn ConnectionManagerInterface) {
 	}
 }
 
+// AddSpectator adds a user as a spectator and sends them the current game state
+func (gs *GameSession) AddSpectator(userID int64, conn ConnectionManagerInterface) {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	gs.Spectators[userID] = true
+
+	// Immediately send the current board state to the new spectator
+	conn.SendMessage(userID, domain.ServerMessage{
+		Type:        "spectate_start",
+		GameID:      gs.GameID,
+		Player1:     gs.Player1Username,
+		Player2:     gs.Player2Username,
+		CurrentTurn: int(gs.Game.CurrentPlayer),
+		Board:       gs.Game.Board,
+	})
+}
+
+// RemoveSpectator removes a user from the spectators list
+func (gs *GameSession) RemoveSpectator(userID int64) {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	delete(gs.Spectators, userID)
+}
+
+// broadcastToSpectators sends a message to all spectators of this game
+func (gs *GameSession) broadcastToSpectators(conn ConnectionManagerInterface, msg domain.ServerMessage) {
+	for spectatorID := range gs.Spectators {
+		conn.SendMessage(spectatorID, msg)
+	}
+}
+
 // Helper function to convert PlayerID board to int board for database storage
 func convertBoardToInts(board [][]domain.PlayerID) [][]int {
 	intBoard := make([][]int, len(board))
@@ -247,6 +353,73 @@ func (gs *GameSession) saveGameAsync(gameID string, p1ID int64, p1User string,
 	}()
 }
 
+func (gs *GameSession) startTurnTimer(conn ConnectionManagerInterface) {
+	if gs.TurnTimer != nil {
+		gs.TurnTimer.Stop()
+	}
+
+	// 15 minutes for a move
+	gs.TurnTimer = time.AfterFunc(15*time.Minute, func() {
+		gs.mu.Lock()
+		defer gs.mu.Unlock()
+
+		if gs.Game.IsFinished() {
+			return
+		}
+
+		currentPlayer := gs.Game.CurrentPlayer
+		var loserID int64
+		var winnerID *int64
+		var winnerUsername string
+
+		if currentPlayer == domain.Player1 {
+			loserID = gs.Player1ID
+			if gs.Player2ID != nil {
+				winnerID = gs.Player2ID
+				winnerUsername = gs.Player2Username
+			} else {
+				// Bot wins
+				winnerUsername = "Bot (" + gs.BotDifficulty + ")"
+			}
+		} else {
+			if gs.Player2ID != nil {
+				loserID = *gs.Player2ID
+			}
+			winnerID = &gs.Player1ID
+			winnerUsername = gs.Player1Username
+		}
+
+		log.Printf("[GAME] Turn timeout for game %s. Loser: %d", gs.GameID, loserID)
+
+		// End game due to timeout
+		gs.Game.Status = domain.StatusWon // or special status? RULES say StatusWon is fine if we set winner
+		gs.FinishedAt = time.Now()
+		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
+		totalMoves := gs.Game.MoveCount
+
+		allowRematch := true
+		gameOverMsg := domain.ServerMessage{
+			Type:         "game_over",
+			Winner:       winnerUsername,
+			Reason:       "timeout",
+			Board:        gs.Game.Board,
+			AllowRematch: &allowRematch,
+		}
+
+		// Notify players
+		conn.SendMessage(gs.Player1ID, gameOverMsg)
+		if gs.Player2ID != nil {
+			conn.SendMessage(*gs.Player2ID, gameOverMsg)
+		}
+		gs.broadcastToSpectators(conn, gameOverMsg)
+
+		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username, gs.Player2ID, gs.Player2Username,
+			winnerID, winnerUsername, "timeout", totalMoves, duration, gs.CreatedAt, gs.FinishedAt, convertBoardToInts(gs.Game.Board))
+
+		gs.StartPostGameTimer(conn)
+	})
+}
+
 func NewGameSession(player1ID int64, player1Username string, player2ID *int64, player2Username string, botDifficulty string, conn ConnectionManagerInterface, repo GameRepository, sm *SessionManager) *GameSession {
 	gameID := uid.GenerateGameID()
 	newGame := (&domain.Game{}).NewGame()
@@ -265,12 +438,15 @@ func NewGameSession(player1ID int64, player1Username string, player2ID *int64, p
 		Player2Username: player2Username,
 		Game:            newGame,
 		PlayerMapping:   mapping,
+		Spectators:      make(map[int64]bool),
 		BotDifficulty:   botDifficulty,
 		CreatedAt:       time.Now(),
 		mu:              sync.Mutex{},
 		repo:            repo,
 		sessionManager:  sm,
 	}
+
+	gs.startTurnTimer(conn)
 
 	conn.SendMessage(player1ID, domain.ServerMessage{
 		Type:        "game_start",
@@ -348,6 +524,10 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 	}
 
 	if gs.Game.Status == domain.StatusWon {
+		if gs.TurnTimer != nil {
+			gs.TurnTimer.Stop()
+		}
+
 		moveMadeMsg := domain.ServerMessage{
 			Type:     "move_made",
 			Column:   column,
@@ -360,6 +540,7 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 		if !gs.IsBot() && gs.Player2ID != nil {
 			conn.SendMessage(*gs.Player2ID, moveMadeMsg)
 		}
+		gs.broadcastToSpectators(conn, moveMadeMsg)
 
 		gs.FinishedAt = time.Now()
 		winnerUsername := gs.GetUsername(gs.Game.Winner)
@@ -381,6 +562,7 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 		if !gs.IsBot() && gs.Player2ID != nil {
 			conn.SendMessage(*gs.Player2ID, gameOverMsg)
 		}
+		gs.broadcastToSpectators(conn, gameOverMsg)
 
 		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
 			gs.Player2ID, gs.Player2Username, &winnerID, winnerUsername,
@@ -392,6 +574,10 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 	}
 
 	if gs.Game.Status == domain.StatusDraw {
+		if gs.TurnTimer != nil {
+			gs.TurnTimer.Stop()
+		}
+
 		moveMadeMsg := domain.ServerMessage{
 			Type:     "move_made",
 			Column:   column,
@@ -404,6 +590,7 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 		if !gs.IsBot() && gs.Player2ID != nil {
 			conn.SendMessage(*gs.Player2ID, moveMadeMsg)
 		}
+		gs.broadcastToSpectators(conn, moveMadeMsg)
 
 		gs.FinishedAt = time.Now()
 		gs.Reason = "draw"
@@ -423,6 +610,7 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 		if !gs.IsBot() && gs.Player2ID != nil {
 			conn.SendMessage(*gs.Player2ID, gameOverMsg)
 		}
+		gs.broadcastToSpectators(conn, gameOverMsg)
 
 		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
 			gs.Player2ID, gs.Player2Username, nil, "draw",
@@ -447,6 +635,9 @@ func (gs *GameSession) HandleMove(userID int64, column int, conn ConnectionManag
 	if !gs.IsBot() && gs.Player2ID != nil {
 		conn.SendMessage(*gs.Player2ID, moveMadeMsg)
 	}
+	gs.broadcastToSpectators(conn, moveMadeMsg)
+
+	gs.startTurnTimer(conn)
 
 	// TRIGGER BOT MOVE if applicable
 	if gs.IsBot() && gs.Game.CurrentPlayer == domain.Player2 {
@@ -484,6 +675,10 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 	}
 
 	if gs.Game.Status == domain.StatusWon {
+		if gs.TurnTimer != nil {
+			gs.TurnTimer.Stop()
+		}
+
 		botMoveMsg := domain.ServerMessage{
 			Type:     "move_made",
 			Column:   botColumn,
@@ -493,6 +688,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 			NextTurn: int(gs.Game.CurrentPlayer),
 		}
 		conn.SendMessage(gs.Player1ID, botMoveMsg)
+		gs.broadcastToSpectators(conn, botMoveMsg)
 
 		gs.FinishedAt = time.Now()
 		gs.Reason = "connect_four"
@@ -508,6 +704,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 			AllowRematch: &allowRematch,
 		}
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
+		gs.broadcastToSpectators(conn, gameOverMsg)
 
 		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
 			nil, gs.Player2Username, nil, gs.Player2Username,
@@ -520,6 +717,10 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 	}
 
 	if gs.Game.Status == domain.StatusDraw {
+		if gs.TurnTimer != nil {
+			gs.TurnTimer.Stop()
+		}
+
 		botMoveMsg := domain.ServerMessage{
 			Type:     "move_made",
 			Column:   botColumn,
@@ -529,6 +730,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 			NextTurn: int(gs.Game.CurrentPlayer),
 		}
 		conn.SendMessage(gs.Player1ID, botMoveMsg)
+		gs.broadcastToSpectators(conn, botMoveMsg)
 
 		gs.FinishedAt = time.Now()
 		gs.Reason = "draw"
@@ -544,6 +746,7 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 			AllowRematch: &allowRematch,
 		}
 		conn.SendMessage(gs.Player1ID, gameOverMsg)
+		gs.broadcastToSpectators(conn, gameOverMsg)
 
 		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
 			nil, gs.Player2Username, nil, "draw",
@@ -564,6 +767,8 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 		NextTurn: int(gs.Game.CurrentPlayer),
 	}
 	conn.SendMessage(gs.Player1ID, botMoveMsg)
+	gs.broadcastToSpectators(conn, botMoveMsg)
+	gs.startTurnTimer(conn)
 
 	return nil
 }
@@ -609,6 +814,7 @@ func (gs *GameSession) HandleDisconnect(userID int64, conn ConnectionManagerInte
 	if !gs.IsBot() && opponentID != nil {
 		conn.SendMessage(*opponentID, gameOverMsg)
 	}
+	gs.broadcastToSpectators(conn, gameOverMsg)
 
 	gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
 		gs.Player2ID, gs.Player2Username, opponentID, opponentUsername,
@@ -652,6 +858,7 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 	if !gs.IsBot() && opponentID != nil {
 		conn.SendMessage(*opponentID, gameOverMsg)
 	}
+	gs.broadcastToSpectators(conn, gameOverMsg)
 
 	gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
 		gs.Player2ID, gs.Player2Username, opponentID, opponentUsername,

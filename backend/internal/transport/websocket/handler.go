@@ -125,6 +125,9 @@ func (h *Handler) handleConnection(conn *websocket.Conn) {
 			gameSession.HandleDisconnect(userID, h.ConnManager, h.SessionManager)
 		}
 
+		// Clean up spectator status across all sessions
+		h.SessionManager.RemoveSpectatorFromAll(userID)
+
 		h.ConnManager.RemoveConnectionIfMatching(userID, conn)
 	}()
 
@@ -203,6 +206,17 @@ func (h *Handler) handleConnection(conn *websocket.Conn) {
 
 // processMessage routes specific actions
 func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
+	// Security: Block spectators from sending game-affecting messages
+	switch msg.Type {
+	case "make_move", "request_rematch", "rematch_response", "abandon_game":
+		if h.SessionManager.IsSpectatorAnywhere(userID) {
+			h.ConnManager.SendMessage(userID, domain.ServerMessage{
+				Type:    "error",
+				Message: "Spectators cannot perform game actions",
+			})
+			return
+		}
+	}
 	switch msg.Type {
 	case "find_match":
 		difficulty := msg.Difficulty
@@ -264,5 +278,24 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 			return
 		}
 		gameSession.TerminateSessionByAbandonment(userID, h.ConnManager)
+
+	case "watch_game":
+		gameSession, exists := h.SessionManager.GetSessionByGameID(msg.GameID)
+		if !exists {
+			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Game not found or ended"})
+			return
+		}
+
+		// Ensure the user isn't already playing in this game
+		if gameSession.Player1ID == userID || (gameSession.Player2ID != nil && *gameSession.Player2ID == userID) {
+			return
+		}
+
+		gameSession.AddSpectator(userID, h.ConnManager)
+
+	case "leave_spectate":
+		if gameSession, exists := h.SessionManager.GetSessionByGameID(msg.GameID); exists {
+			gameSession.RemoveSpectator(userID)
+		}
 	}
 }
