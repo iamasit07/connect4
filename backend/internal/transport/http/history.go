@@ -1,11 +1,10 @@
 package http
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 
+	"github.com/gin-gonic/gin"
 	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
 )
 
@@ -26,23 +25,18 @@ type historyResponse struct {
 	MovesCount       int    `json:"movesCount"`
 }
 
-func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	userID, ok := r.Context().Value("user_id").(int64)
-	if !ok {
-		log.Printf("[HISTORY] Unauthorized: context value 'user_id' is missing or wrong type. Value: %v, Type: %T", r.Context().Value("user_id"), r.Context().Value("user_id"))
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+func (h *HistoryHandler) GetHistory(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	if userID == 0 {
+		log.Printf("[HISTORY] Unauthorized: user_id is missing or zero")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
 	rawHistory, err := h.GameRepo.GetUserGameHistory(userID)
 	if err != nil {
 		log.Printf("[HISTORY] Error fetching history for user %d: %v", userID, err)
-		http.Error(w, "Failed to fetch history", http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch history"})
 		return
 	}
 
@@ -77,33 +71,27 @@ func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	c.JSON(http.StatusOK, response)
 }
 
-func (h *HistoryHandler) GetGameDetails(w http.ResponseWriter, r *http.Request) {
-	// Extract ID from URL path (assuming /api/history/{id})
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 4 {
-		http.Error(w, "Invalid game ID", http.StatusBadRequest)
+func (h *HistoryHandler) GetGameDetails(c *gin.Context) {
+	gameID := c.Param("id")
+	if gameID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid game ID"})
 		return
 	}
-	gameID := pathParts[len(pathParts)-1]
-    if gameID == "" {
-        gameID = pathParts[len(pathParts)-2]
-    }
 
 	game, err := h.GameRepo.GetGameByID(gameID)
 	if err != nil {
-		http.Error(w, "Game not found", http.StatusNotFound)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Game not found"})
 		return
 	}
-	
+
 	// Also fetch board state
 	board, err := h.GameRepo.GetGameBoard(gameID)
 	if err != nil {
 		// If board fails, just return game info
-		json.NewEncoder(w).Encode(game)
+		c.JSON(http.StatusOK, game)
 		return
 	}
 
@@ -115,5 +103,5 @@ func (h *HistoryHandler) GetGameDetails(w http.ResponseWriter, r *http.Request) 
 		Board:      board,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	c.JSON(http.StatusOK, response)
 }

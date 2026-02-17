@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/iamasit07/4-in-a-row/backend/pkg/auth"
 	"github.com/iamasit07/4-in-a-row/backend/pkg/httputil"
 )
@@ -17,25 +17,25 @@ type SessionValidator interface {
 }
 
 // AuthMiddleware validates JWT token and session via the AuthService (Redis → Postgres fallback)
-func AuthMiddleware(next http.HandlerFunc, sv SessionValidator) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func AuthMiddleware(sv SessionValidator) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		// 1. Extract Token (Cookie or Header)
-		tokenString, err := httputil.GetTokenFromRequest(r)
+		tokenString, err := httputil.GetTokenFromRequest(c.Request)
 		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
 
 		// 2. Validate JWT + Session (checks signature, is_active, and expires_at)
 		claims, err := sv.ValidateToken(tokenString)
 		if err != nil {
-			log.Printf("[AUTH] Token/session validation failed for %s: %v", r.URL.Path, err)
-			httputil.ClearAuthCookie(w)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			log.Printf("[AUTH] Token/session validation failed for %s: %v", c.Request.URL.Path, err)
+			httputil.ClearAuthCookie(c.Writer)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
 
-		log.Printf("[AUTH] Success for %s (User: %d)", r.URL.Path, claims.UserID)
+		log.Printf("[AUTH] Success for %s (User: %d)", c.Request.URL.Path, claims.UserID)
 
 		// 3. Update Last Activity (async, best-effort)
 		go func(sid string) {
@@ -44,11 +44,11 @@ func AuthMiddleware(next http.HandlerFunc, sv SessionValidator) http.HandlerFunc
 			}
 		}(claims.SessionID)
 
-		// 4. Pass UserID and username to next handler
-		ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
-		ctx = context.WithValue(ctx, "username", claims.Username)
-		ctx = context.WithValue(ctx, "session_id", claims.SessionID)
-		ctx = context.WithValue(ctx, "session_expiry", time.Now())
-		next.ServeHTTP(w, r.WithContext(ctx))
+		// 4. Pass UserID and username to next handler via Gin context
+		c.Set("user_id", claims.UserID)
+		c.Set("username", claims.Username)
+		c.Set("session_id", claims.SessionID)
+		c.Set("session_expiry", time.Now())
+		c.Next()
 	}
 }
