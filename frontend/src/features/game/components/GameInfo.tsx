@@ -38,6 +38,7 @@ export const GameInfo = () => {
           }}
           className={`
             flex-1 flex items-center gap-1.5 sm:gap-3 p-1.5 sm:p-3 rounded-xl
+            ${myTurn ? "bg-primary/10 ring-2 ring-primary" : "bg-card"}
             ${isSpectator ? "opacity-75" : ""}
             transition-colors duration-300
           `}

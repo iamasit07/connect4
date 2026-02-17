@@ -5,7 +5,7 @@ import { GameInfo } from "../components/GameInfo";
 import { GameControls } from "../components/GameControls";
 import { GameResultBanner } from "../components/GameResultBanner";
 import { GameEndActions } from "../components/GameEndActions";
-import { RematchRequest } from "../components/RematchRequest";
+import { RematchOverlay } from "../components/RematchRequest";
 import { useGameSocket } from "../hooks/useGameSocket";
 import { useGameStore } from "../store/gameStore";
 import { toast } from "sonner";
@@ -36,10 +36,8 @@ const GamePage = () => {
     gameId: storeGameId,
   } = useGameStore();
 
-  // Verify game ID matches
   useEffect(() => {
     if (gameStatus === "playing" && storeGameId && storeGameId !== gameId) {
-      // Game ID changed (e.g. rematch started), update URL
       navigate(`/game/${storeGameId}`, { replace: true });
     }
   }, [gameStatus, storeGameId, gameId, navigate]);
@@ -103,24 +101,20 @@ const GamePage = () => {
     <div className="h-dvh bg-background flex flex-col items-center justify-center overflow-hidden p-1 sm:p-2 md:p-4">
       <GameResultBanner />
       <GameInfo />
-      <div className="flex-1 w-full min-h-0 flex flex-col items-center justify-center overflow-hidden">
+      <div className="flex-1 w-full min-h-0 flex flex-col items-center justify-center overflow-hidden relative">
         <Board onColumnClick={handleColumnClick} />
+        {rematchStatus === "received" && (
+          <RematchOverlay
+            onAccept={handleAcceptRematch}
+            onDecline={handleDeclineRematch}
+            opponentName={opponent || "Opponent"}
+          />
+        )}
       </div>
       <GameControls
         onSurrender={handleSurrender}
         isPlaying={gameStatus === "playing"}
       />
-      {gameStatus === "finished" && isPvP && allowRematch && (
-        <div className="w-full max-w-[min(90vw,500px)] mx-auto mt-1 sm:mt-2 flex justify-center flex-shrink-0">
-          <RematchRequest
-            onSendRequest={handleSendRematch}
-            onAcceptRequest={handleAcceptRematch}
-            onDeclineRequest={handleDeclineRematch}
-            rematchStatus={rematchStatus}
-            opponentName={opponent || "Opponent"}
-          />
-        </div>
-      )}
       <GameEndActions onPlayAgain={handlePlayAgain} onGoHome={handleGoHome} />
     </div>
   );

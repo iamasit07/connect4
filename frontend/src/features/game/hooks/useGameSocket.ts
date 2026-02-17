@@ -66,8 +66,8 @@ export const useGameSocket = (
     setConnectionStatus('disconnected');
   }, [setConnectionStatus]);
 
-  const sendMessage = useCallback((message: any) => {
-    websocketManager.send(message);
+  const sendMessage = useCallback((message: Record<string, unknown>) => {
+    websocketManager.send(message as any);
   }, []);
 
   return {

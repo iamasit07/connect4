@@ -2,42 +2,58 @@
 // WebSocket Client Messages (Sent by Frontend)
 // ============================================
 
-export type ClientMessage = 
-  | InitMessage 
-  | FindMatchMessage 
-  | MakeMoveMessage 
-  | AbandonMessage;
+export type ClientMessage =
+  | InitMessage
+  | FindMatchMessage
+  | MakeMoveMessage
+  | AbandonMessage
+  | RequestRematchMessage
+  | RematchResponseMessage
+  | CancelSearchMessage;
 
 export interface InitMessage {
-  type: 'init';
+  type: "init";
   jwt: string;
 }
 
 export interface FindMatchMessage {
-  type: 'find_match';
-  difficulty: '' | 'easy' | 'medium' | 'hard';
+  type: "find_match";
+  difficulty: "" | "easy" | "medium" | "hard";
 }
 
 export interface MakeMoveMessage {
-  type: 'make_move';
+  type: "make_move";
   column: number; // 0-6
 }
 
 export interface AbandonMessage {
-  type: 'abandon_game';
+  type: "abandon_game";
+}
+
+export interface RequestRematchMessage {
+  type: "request_rematch";
+}
+
+export interface RematchResponseMessage {
+  type: "rematch_response";
+  rematchResponse: "accept" | "decline";
+}
+
+export interface CancelSearchMessage {
+  type: "cancel_search";
 }
 
 // ============================================
 // WebSocket Server Messages (Received from Backend)
 // ============================================
 
-export type ServerMessage = 
-  | QueueJoinedMessage 
+export type ServerMessage =
+  | QueueJoinedMessage
   | QueueLeftMessage
-  | InitGameMessage 
-  | GameStateMessage 
+  | InitGameMessage
+  | GameStateMessage
   | MoveMadeMessage
-  | GameOverMessage 
+  | GameOverMessage
   | RematchRequestMessage
   | RematchAcceptedMessage
   | RematchDeclinedMessage
@@ -48,50 +64,50 @@ export type ServerMessage =
   | ErrorMessage;
 
 export interface QueueTimeoutMessage {
-  type: 'queue_timeout';
+  type: "queue_timeout";
 }
 
 export interface QueueLeftMessage {
-  type: 'queue_left';
+  type: "queue_left";
 }
 
 export interface RematchRequestMessage {
-  type: 'rematch_request';
+  type: "rematch_request";
   rematchRequester: string;
   rematchTimeout: number;
 }
 
 export interface RematchAcceptedMessage {
-  type: 'rematch_accepted';
+  type: "rematch_accepted";
 }
 
 export interface RematchDeclinedMessage {
-  type: 'rematch_declined';
+  type: "rematch_declined";
   allowRematch?: boolean;
 }
 
 export interface RematchTimeoutMessage {
-  type: 'rematch_timeout';
+  type: "rematch_timeout";
   message: string;
   allowRematch?: boolean;
 }
 
 export interface RematchCancelledMessage {
-  type: 'rematch_cancelled';
+  type: "rematch_cancelled";
   message: string;
 }
 
 export interface SpectatorCountMessage {
-  type: 'spectator_count';
+  type: "spectator_count";
   count: number;
 }
 
 export interface QueueJoinedMessage {
-  type: 'queue_joined';
+  type: "queue_joined";
 }
 
 export interface InitGameMessage {
-  type: 'game_start';
+  type: "game_start";
   gameId: string;
   opponent: string; // Backend sends just username
   yourPlayer: 1 | 2;
@@ -100,7 +116,7 @@ export interface InitGameMessage {
 }
 
 export interface GameStateMessage {
-  type: 'game_state';
+  type: "game_state";
   board: number[][];
   currentTurn: 1 | 2;
   lastMove?: {
@@ -112,7 +128,7 @@ export interface GameStateMessage {
 }
 
 export interface MoveMadeMessage {
-  type: 'move_made';
+  type: "move_made";
   column: number;
   row: number;
   player: number;
@@ -126,9 +142,9 @@ export interface MoveMadeMessage {
 }
 
 export interface GameOverMessage {
-  type: 'game_over';
+  type: "game_over";
   winner: string;
-  reason: 'connect4' | 'timeout' | 'surrender' | 'disconnect';
+  reason: "connect4" | "timeout" | "surrender" | "disconnect";
   board?: number[][];
   newRating?: number;
   winningCells?: { row: number; col: number }[];
@@ -136,7 +152,7 @@ export interface GameOverMessage {
 }
 
 export interface ErrorMessage {
-  type: 'error';
+  type: "error";
   message: string;
 }
 
@@ -147,7 +163,7 @@ export interface ErrorMessage {
 export interface GameHistoryItem {
   id: string;
   opponentUsername: string;
-  result: 'win' | 'loss' | 'draw';
+  result: "win" | "loss" | "draw";
   endReason: string;
   createdAt: string;
   movesCount: number;
@@ -189,8 +205,8 @@ export interface AuthResponse {
 // Game State Types
 // ============================================
 
-export type GameMode = 'pvp' | 'bot';
-export type BotDifficulty = 'easy' | 'medium' | 'hard';
+export type GameMode = "pvp" | "bot";
+export type BotDifficulty = "easy" | "medium" | "hard";
 export type PlayerNumber = 1 | 2;
 export type CellValue = 0 | 1 | 2;
 export type Board = CellValue[][];
@@ -201,7 +217,7 @@ export interface GameState {
   currentTurn: PlayerNumber;
   myPlayer: PlayerNumber | null;
   opponent: { username: string; rating: number } | null;
-  status: 'idle' | 'queuing' | 'playing' | 'finished';
+  status: "idle" | "queuing" | "playing" | "finished";
   winner: string | null;
   winReason: string | null;
   winningCells: { row: number; col: number }[] | null;
@@ -211,6 +227,6 @@ export interface GameState {
 }
 
 export interface ConnectionState {
-  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  status: "disconnected" | "connecting" | "connected" | "error";
   error: string | null;
 }

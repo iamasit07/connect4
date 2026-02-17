@@ -1,6 +1,6 @@
 import { WS_URL, API_BASE_URL, BOT_MOVE_DELAY } from "@/lib/config";
 import { useGameStore } from "../store/gameStore";
-import type { Board, ServerMessage } from "../types";
+import type { Board, ServerMessage, ClientMessage } from "../types";
 import { toast } from "sonner";
 
 type MessageHandler = (message: ServerMessage) => void;
@@ -32,90 +32,88 @@ class WebSocketManager {
       return;
     }
 
-    this.connectionPromise = new Promise<void>((resolve, reject) => {
-      const attempt = async () => {
-        try {
-          console.log(
-            `[WebSocket] Connection attempt #${myConnectionId} starting...`,
-          );
+    this.connectionPromise = this.createConnection(myConnectionId);
+    return this.connectionPromise;
+  }
 
-          const response = await fetch(`${API_BASE_URL}/auth/me`, {
-            credentials: "include",
-          });
+  private async createConnection(myConnectionId: number): Promise<void> {
+    try {
+      console.log(
+        `[WebSocket] Connection attempt #${myConnectionId} starting...`,
+      );
 
-          // CHECK 1: If we became stale while fetching, stop immediately.
+      const response = await fetch(`${API_BASE_URL}/auth/me`, {
+        credentials: "include",
+      });
+
+      // CHECK 1: If we became stale while fetching, stop immediately.
+      if (myConnectionId !== this.currentConnectionId) {
+        console.log(
+          `[WebSocket] Stale attempt #${myConnectionId} aborted before socket creation.`,
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Token fetch failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.token) {
+        throw new Error("No token received");
+      }
+
+      return new Promise<void>((resolve, reject) => {
+        const ws = new WebSocket(WS_URL);
+
+        ws.onopen = () => {
+          // CHECK 2: If we became stale while opening, close and exit.
           if (myConnectionId !== this.currentConnectionId) {
             console.log(
-              `[WebSocket] Stale attempt #${myConnectionId} aborted before socket creation.`,
+              `[WebSocket] Stale attempt #${myConnectionId} aborted after open.`,
             );
-            // Resolve to avoid crashing the caller, but do nothing.
+            ws.close();
             resolve();
             return;
           }
 
-          if (!response.ok) {
-            throw new Error(`Token fetch failed: ${response.status}`);
-          }
+          console.log(
+            `[WebSocket] Sending init for attempt #${myConnectionId}`,
+          );
+          ws.send(JSON.stringify({ type: "init", jwt: data.token }));
 
-          const data = await response.json();
-          if (!data.token) {
-            throw new Error("No token received");
-          }
+          this.socket = ws;
+          this.setupListeners(ws);
+          resolve();
+        };
 
-          const ws = new WebSocket(WS_URL);
-
-          ws.onopen = () => {
-            // CHECK 2: If we became stale while opening, close and exit.
-            if (myConnectionId !== this.currentConnectionId) {
-              console.log(
-                `[WebSocket] Stale attempt #${myConnectionId} aborted after open.`,
-              );
-              ws.close();
-              resolve();
-              return;
-            }
-
-            console.log(
-              `[WebSocket] Sending init for attempt #${myConnectionId}`,
-            );
-            ws.send(JSON.stringify({ type: "init", jwt: data.token }));
-
-            this.socket = ws;
-            this.setupListeners(ws);
-            resolve();
-          };
-
-          ws.onerror = (error) => {
-            if (myConnectionId === this.currentConnectionId) {
-              console.error("[WebSocket] Connection failed:", error);
-              this.socket = null;
-              this.connectionPromise = null;
-              reject(error);
-            }
-          };
-
-          ws.onclose = (event) => {
-            if (myConnectionId === this.currentConnectionId) {
-              console.log("[WebSocket] Disconnected:", event.code);
-              this.socket = null;
-              this.connectionPromise = null;
-            }
-          };
-        } catch (error) {
+        ws.onerror = (error) => {
           if (myConnectionId === this.currentConnectionId) {
+            console.error("[WebSocket] Connection failed:", error);
+            this.socket = null;
             this.connectionPromise = null;
             reject(error);
           }
-        }
-      };
-      attempt();
-    });
+        };
 
-    return this.connectionPromise;
+        ws.onclose = (event) => {
+          if (myConnectionId === this.currentConnectionId) {
+            console.log("[WebSocket] Disconnected:", event.code);
+            this.socket = null;
+            this.connectionPromise = null;
+          }
+        };
+      });
+    } catch (error) {
+      if (myConnectionId === this.currentConnectionId) {
+        this.connectionPromise = null;
+      }
+      throw error;
+    }
   }
 
   public disconnect() {
-    this.currentConnectionId++; // Invalidate all pending attempts
+    this.currentConnectionId++;
     if (this.socket) {
       this.socket.close();
       this.socket = null;
@@ -123,7 +121,7 @@ class WebSocketManager {
     this.connectionPromise = null;
   }
 
-  public send(message: Record<string, unknown>) {
+  public send(message: ClientMessage | Record<string, unknown>) {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(message));
     } else {
