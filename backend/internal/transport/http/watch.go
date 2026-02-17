@@ -1,9 +1,9 @@
 package http
 
 import (
-	"encoding/json"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
 )
 
@@ -30,12 +30,7 @@ type playerResponse struct {
 }
 
 // GetLiveGames returns all active PvP games available for spectating
-func (h *WatchHandler) GetLiveGames(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
+func (h *WatchHandler) GetLiveGames(c *gin.Context) {
 	activeGames := h.SessionManager.GetActiveGames()
 
 	response := make([]liveGameResponse, 0, len(activeGames))
@@ -50,6 +45,5 @@ func (h *WatchHandler) GetLiveGames(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	c.JSON(http.StatusOK, response)
 }

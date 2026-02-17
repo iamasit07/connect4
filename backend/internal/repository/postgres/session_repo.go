@@ -105,7 +105,7 @@ func (r *SessionRepo) DeactivateSession(sessionID string) error {
 	query := `
 	UPDATE user_sessions
 	SET is_active = FALSE
-	WHERE session_id = CAST($1 as TEXT);
+	WHERE session_id = CAST($1 as VARCHAR);
 	`
 	_, err := r.DB.Exec(query, sessionID)
 	if err != nil {

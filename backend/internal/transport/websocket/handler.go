@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
@@ -41,9 +42,9 @@ func NewHandler(cm *ConnectionManager, mq *matchmaking.MatchmakingQueue, sm *gam
 	}
 }
 
-// HandleWebSocket is the HTTP handler that upgrades the connection
-func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := h.Upgrader.Upgrade(w, r, nil)
+// HandleWebSocket is the Gin handler that upgrades the connection
+func (h *Handler) HandleWebSocket(c *gin.Context) {
+	conn, err := h.Upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("[WS] Upgrade error: %v", err)
 		return

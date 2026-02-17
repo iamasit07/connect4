@@ -47,6 +47,8 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    sysctls:
+      - vm.overcommit_memory=1
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
