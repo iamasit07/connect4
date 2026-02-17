@@ -264,6 +264,5 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 			return
 		}
 		gameSession.TerminateSessionByAbandonment(userID, h.ConnManager)
-		h.SessionManager.RemoveSession(gameSession.GameID)
 	}
 }

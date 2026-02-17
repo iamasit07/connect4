@@ -630,15 +630,16 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 	opponentUsername := gs.GetOpponentUsername(abandoningUserID)
 	opponentID := gs.GetOpponentID(abandoningUserID)
 
-	log.Printf("[TERMINATE] Game %s terminated by abandonment from %s (ID: %d)",
+	log.Printf("[TERMINATE] Game %s terminated by surrender from %s (ID: %d)",
 		gs.GameID, abandoningUsername, abandoningUserID)
 
 	gs.FinishedAt = time.Now()
 	gs.Reason = "surrender"
+	gs.Game.Status = domain.StatusWon
 
 	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
 
-	allowRematch := false // Surrendered games don't allow rematch
+	allowRematch := true // Surrendered games allow rematch
 	gameOverMsg := domain.ServerMessage{
 		Type:         "game_over",
 		Winner:       opponentUsername,
@@ -655,6 +656,9 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 	gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
 		gs.Player2ID, gs.Player2Username, opponentID, opponentUsername,
 		gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt, convertBoardToInts(gs.Game.Board))
+
+	// Start post-game timer so rematch is possible
+	gs.StartPostGameTimer(conn)
 
 	return nil
 }
