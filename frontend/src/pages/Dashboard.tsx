@@ -27,7 +27,11 @@ const Dashboard = () => {
     [navigate],
   );
 
-  const { spectateGame } = useGameSocket(onGameStart);
+  const { spectateGame, disconnect } = useGameSocket(onGameStart);
+  
+  useEffect(() => {
+    return () => disconnect();
+  }, [disconnect]);
 
   useEffect(() => {
     checkAuth();

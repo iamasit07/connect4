@@ -8,6 +8,7 @@ export interface User {
   wins?: number;
   losses?: number;
   draws?: number;
+  activeGameId?: string;
 }
 
 export interface AuthState {

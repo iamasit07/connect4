@@ -41,6 +41,7 @@ export const Board = ({ onColumnClick }: BoardProps) => {
     (col: number) => {
       if (isMyTurn() && canDropInColumn(col)) {
         onColumnClick(col);
+        setHoveredColumn(null);
       }
     },
     [onColumnClick, isMyTurn, canDropInColumn],
@@ -104,7 +105,9 @@ export const Board = ({ onColumnClick }: BoardProps) => {
                   }
                   hoverPlayer={currentTurn}
                   onClick={() => handleColumnClick(colIndex)}
-                  onMouseEnter={() => setHoveredColumn(colIndex)}
+                  onMouseEnter={() => {
+                    if (isMyTurn()) setHoveredColumn(colIndex);
+                  }}
                   onMouseLeave={() => setHoveredColumn(null)}
                 />
               )),

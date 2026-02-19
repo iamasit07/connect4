@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useEffect } from 'react';
 import { fireWinConfetti, fireDrawConfetti } from '@/lib/confetti';
 import { RematchRequest } from './RematchRequest';
+import { Disk } from './Disk';
 
 interface GameOverModalProps {
   onPlayAgain: () => void;
@@ -30,12 +31,18 @@ export const GameOverModal = ({
     gameMode,
     rematchStatus,
     isSpectator,
+    spectatorPlayer1, 
+    spectatorPlayer2,
   } = useGameStore();
   
   const isWin = winner === 'You' || (myPlayer === 1 && winner === 'Player 1') || (myPlayer === 2 && winner === 'Player 2');
   const isDraw = winReason === 'draw' || winner === 'Draw';
   const isLoss = !isWin && !isDraw;
   const isPvP = gameMode === 'pvp';
+
+  // Spectator helpers
+  const spectatorWinnerIsP1 = isSpectator && (winner === spectatorPlayer1 || winner === 'Player 1');
+  const spectatorWinnerIsP2 = isSpectator && (winner === spectatorPlayer2 || winner === 'Player 2');
 
   useEffect(() => {
     if (gameStatus === 'finished' && !isSpectator) {
@@ -44,20 +51,28 @@ export const GameOverModal = ({
       } else if (isDraw) {
         fireDrawConfetti();
       }
+    } else if (gameStatus === 'finished' && isSpectator) {
+        if (winner) fireWinConfetti();
+        else fireDrawConfetti();
     }
-  }, [gameStatus, isWin, isDraw, isSpectator]);
+  }, [gameStatus, isWin, isDraw, isSpectator, winner]);
 
   if (gameStatus !== 'finished') return null;
 
   const getIcon = () => {
-    if (isSpectator) return <Trophy className="w-16 h-16 text-primary" />;
+    if (isSpectator) {
+        if (spectatorWinnerIsP1) return <Trophy className="w-16 h-16 text-red-500" />;
+        if (spectatorWinnerIsP2) return <Trophy className="w-16 h-16 text-yellow-500" />;
+        if (isDraw) return <Handshake className="w-16 h-16 text-muted-foreground" />;
+        return <Trophy className="w-16 h-16 text-primary" />;
+    }
     if (isWin) return <Trophy className="w-16 h-16 text-yellow-500" />;
     if (isDraw) return <Handshake className="w-16 h-16 text-muted-foreground" />;
     return <Frown className="w-16 h-16 text-destructive" />;
   };
 
   const getTitle = () => {
-    if (isSpectator) return 'Game Over';
+    if (isSpectator) return isDraw ? 'Match Drawn' : 'Match Finished';
     if (isWin) return 'Victory!';
     if (isDraw) return "It's a Draw!";
     return 'Defeat';
@@ -65,6 +80,9 @@ export const GameOverModal = ({
 
   const getMessage = () => {
     if (isSpectator) {
+      if (isDraw) return 'The match ended in a draw.';
+      if (spectatorWinnerIsP1) return `${spectatorPlayer1 || 'Player 1'} (Red) wins!`;
+      if (spectatorWinnerIsP2) return `${spectatorPlayer2 || 'Player 2'} (Yellow) wins!`;
       return `${winner} wins!`;
     }
     if (isWin) {
@@ -99,11 +117,10 @@ export const GameOverModal = ({
           exit={{ scale: 0.8, opacity: 0, y: 20 }}
           transition={{ type: 'spring', stiffness: 300, damping: 25 }}
           className={`
-            bg-card rounded-2xl p-8 max-w-md w-full text-center shadow-2xl
-            ${isWin && !isSpectator ? 'ring-4 ring-yellow-500/50' : ''}
+            bg-card rounded-2xl p-6 sm:p-8 max-w-md w-full text-center shadow-2xl
+            ${(isWin && !isSpectator) || (isSpectator && !isDraw) ? 'ring-4 ring-yellow-500/50' : ''}
             ${isDraw ? 'ring-4 ring-muted/50' : ''}
             ${isLoss && !isSpectator ? 'ring-4 ring-destructive/50' : ''}
-            ${isSpectator ? 'ring-4 ring-primary/50' : ''}
           `}
         >
           <motion.div
@@ -120,24 +137,68 @@ export const GameOverModal = ({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
             className={`
-              text-3xl font-bold mb-2
-              ${isWin && !isSpectator ? 'text-yellow-500' : ''}
+              text-2xl sm:text-3xl font-bold mb-2
+              ${(isWin && !isSpectator) || (isSpectator && !isDraw) ? 'text-yellow-500' : ''}
               ${isDraw ? 'text-muted-foreground' : ''}
               ${isLoss && !isSpectator ? 'text-destructive' : ''}
-              ${isSpectator ? 'text-primary' : ''}
             `}
           >
             {getTitle()}
           </motion.h2>
 
-          <motion.p
+          {/* Winner/Draw details */}
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="text-muted-foreground mb-6"
+            className="mb-6 sm:mb-8 flex flex-col items-center gap-3"
           >
-            {getMessage()}
-          </motion.p>
+            {isDraw ? (
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 relative">
+                    <Disk player={1} />
+                  </div>
+                  <span className="text-muted-foreground font-bold">VS</span>
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 relative">
+                    <Disk player={2} />
+                  </div>
+                </div>
+                <p className="text-muted-foreground font-medium text-sm sm:text-base">
+                  {getMessage()}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-muted-foreground text-xs sm:text-sm uppercase tracking-wider font-semibold">
+                  Winner
+                </span>
+                <div className="w-12 h-12 sm:w-16 sm:h-16 relative">
+                  <Disk player={
+                    isSpectator 
+                      ? (spectatorWinnerIsP1 ? 1 : 2)
+                      : (isWin ? myPlayer! : (myPlayer === 1 ? 2 : 1))
+                  } />
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className={`text-lg sm:text-xl font-bold ${
+                    isSpectator 
+                      ? (spectatorWinnerIsP1 ? 'text-red-500' : 'text-yellow-500')
+                      : (isWin ? 'text-yellow-500' : 'text-destructive')
+                  }`}>
+                    {isSpectator 
+                      ? (spectatorWinnerIsP1 ? spectatorPlayer1 || 'Player 1' : spectatorPlayer2 || 'Player 2')
+                      : (isWin ? 'You' : (opponent || 'Opponent'))}
+                  </span>
+                  {winReason && (
+                    <span className="text-[10px] sm:text-xs text-muted-foreground">
+                      by {winReason === 'connect4' ? 'connect 4' : winReason}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </motion.div>
 
           {/* Rematch section for PvP games */}
           {isPvP && !isSpectator && onSendRematch && onAcceptRematch && onDeclineRematch && (

@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
+	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
 	"github.com/iamasit07/4-in-a-row/backend/internal/service/session"
 	"github.com/iamasit07/4-in-a-row/backend/pkg/auth"
 	"github.com/iamasit07/4-in-a-row/backend/pkg/httputil"
@@ -36,20 +37,22 @@ type SessionInvalidator interface {
 }
 
 type AuthHandler struct {
-	UserRepo    *postgres.UserRepo
-	SessionRepo *postgres.SessionRepo
-	ConnManager Disconnector
-	Cache       session.CacheRepository
-	AuthService SessionInvalidator
+	UserRepo       *postgres.UserRepo
+	SessionRepo    *postgres.SessionRepo
+	ConnManager    Disconnector
+	Cache          session.CacheRepository
+	AuthService    SessionInvalidator
+	SessionManager *game.SessionManager
 }
 
-func NewAuthHandler(userRepo *postgres.UserRepo, sessionRepo *postgres.SessionRepo, cm Disconnector, cache session.CacheRepository, authSvc SessionInvalidator) *AuthHandler {
+func NewAuthHandler(userRepo *postgres.UserRepo, sessionRepo *postgres.SessionRepo, cm Disconnector, cache session.CacheRepository, authSvc SessionInvalidator, sm *game.SessionManager) *AuthHandler {
 	return &AuthHandler{
-		UserRepo:    userRepo,
-		SessionRepo: sessionRepo,
-		ConnManager: cm,
-		Cache:       cache,
-		AuthService: authSvc,
+		UserRepo:       userRepo,
+		SessionRepo:    sessionRepo,
+		ConnManager:    cm,
+		Cache:          cache,
+		AuthService:    authSvc,
+		SessionManager: sm,
 	}
 }
 
@@ -243,45 +246,57 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	// 2. Try Cache
+	var response map[string]interface{}
+	cacheHit := false
+
 	if h.Cache != nil {
 		cacheKey := fmt.Sprintf("user_profile:%d", userID)
 		cachedData, err := h.Cache.Get(c.Request.Context(), cacheKey)
 		if err == nil && cachedData != "" {
-			var response map[string]interface{}
 			if err := json.Unmarshal([]byte(cachedData), &response); err == nil {
-				// Inject current token
-				response["token"] = token
+				cacheHit = true
 				c.Header("X-Cache", "HIT")
-				c.JSON(http.StatusOK, response)
-				return
 			}
 		}
 	}
 
-	// 3. Fallback to Database
-	user, err := h.UserRepo.GetUserByID(userID)
-	if err != nil || user == nil {
-		log.Printf("[AUTH] /me: GetUserByID failed for user %d: %v", userID, err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
+	if !cacheHit {
+		// 3. Fallback to Database
+		user, err := h.UserRepo.GetUserByID(userID)
+		if err != nil || user == nil {
+			log.Printf("[AUTH] /me: GetUserByID failed for user %d: %v", userID, err)
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		response = user.UserResponse()
+
+		// 4. Update Cache
+		if h.Cache != nil {
+			cacheKey := fmt.Sprintf("user_profile:%d", userID)
+			if data, err := json.Marshal(response); err == nil {
+				h.Cache.Set(c.Request.Context(), cacheKey, data, time.Hour)
+			}
+		}
+		c.Header("X-Cache", "MISS")
 	}
 
-	response := user.UserResponse()
+	// 5. Inject Token
+	response["token"] = token
 
-	// 4. Update Cache
-	if h.Cache != nil {
-		cacheKey := fmt.Sprintf("user_profile:%d", userID)
-		// Cache only user data, without token
-		if data, err := json.Marshal(response); err == nil {
-			// Cache for 1 hour
-			h.Cache.Set(c.Request.Context(), cacheKey, data, time.Hour)
+	// 6. Inject Active Game ID (Dynamic, not cached)
+	if h.SessionManager != nil {
+		if sess, exists := h.SessionManager.GetSessionByUserID(userID); exists {
+			// Only return if game is NOT finished (or is in rematch window)
+			if !sess.Game.IsFinished() {
+				response["activeGameId"] = sess.GameID
+			}
+			// Note: If game is finished but pending rematch, we might still want to return it?
+			// For now, only return if strictly active or we want them to see the result/rematch UI.
+			// Let's return it even if finished, so they can see "Game Over" screen.
+			response["activeGameId"] = sess.GameID
 		}
 	}
 
-	// 5. Return Response
-	response["token"] = token
-	c.Header("X-Cache", "MISS")
 	c.JSON(http.StatusOK, response)
 }
 

@@ -58,7 +58,7 @@ export const Cell = ({
           </div>
         )}
         {value === 0 && isHovered && hoverPlayer && (
-          <div className="w-[92%] h-[92%] opacity-50">
+          <div className="w-[92%] h-[92%] opacity-50 pointer-events-none">
             <Disk player={hoverPlayer as 1 | 2} />
           </div>
         )}

@@ -3,6 +3,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+interface RematchRequestProps {
+  onSendRequest: () => void;
+  onAcceptRequest: () => void;
+  onDeclineRequest: () => void;
+  rematchStatus: 'idle' | 'sent' | 'received' | 'accepted' | 'declined';
+  opponentName: string;
+}
+
 interface RematchOverlayProps {
   onAccept: () => void;
   onDecline: () => void;
@@ -104,5 +112,48 @@ export const RematchOverlay = ({
         </motion.div>
       </motion.div>
     </AnimatePresence>
+  );
+};
+
+export const RematchRequest = ({
+  onSendRequest,
+  onAcceptRequest,
+  onDeclineRequest,
+  rematchStatus,
+  opponentName,
+}: RematchRequestProps) => {
+  if (rematchStatus === 'received') {
+    return (
+      <div className="relative h-32 w-full">
+         <RematchOverlay
+           onAccept={onAcceptRequest}
+           onDecline={onDeclineRequest}
+           opponentName={opponentName}
+         />
+      </div>
+    );
+  }
+
+  if (rematchStatus === 'sent') {
+    return (
+      <Button disabled variant="outline" className="gap-2 w-full">
+        Waiting for opponent...
+      </Button>
+    );
+  }
+
+  if (rematchStatus === 'accepted') {
+    return (
+       <Button disabled className="gap-2 bg-green-600 w-full text-white">
+         <Check className="w-4 h-4" />
+         Rematch Accepted!
+       </Button>
+    );
+  }
+
+  return (
+    <Button onClick={onSendRequest} className="gap-2 w-full" variant="secondary">
+      Request Rematch
+    </Button>
   );
 };

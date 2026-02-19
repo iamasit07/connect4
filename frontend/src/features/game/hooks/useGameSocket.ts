@@ -2,20 +2,21 @@ import { useEffect, useCallback } from 'react';
 import { websocketManager } from '../services/websocketManager';
 import { useGameStore } from '../store/gameStore';
 import type { BotDifficulty } from '../types';
-import { toast } from 'sonner';
 
 export const useGameSocket = (
   onGameStart?: (gameId: string) => void,
   onQueueTimeout?: () => void
 ) => {
-  const { setConnectionStatus, setQueuing } = useGameStore();
+  const setQueuing = useGameStore((state) => state.setQueuing);
 
   // Register onGameStart callback
   useEffect(() => {
     if (!onGameStart) return undefined;
     
     const unregister = websocketManager.onGameStart(onGameStart);
-    return unregister;
+    return () => {
+      unregister();
+    };
   }, [onGameStart]);
 
   // Register onQueueTimeout callback
@@ -34,16 +35,7 @@ export const useGameSocket = (
   }, [onQueueTimeout]);
 
   const findMatch = useCallback(async (mode: 'pvp' | 'bot', difficulty?: BotDifficulty) => {
-    try {
-      setConnectionStatus('connecting');
-      await websocketManager.connect();
-      setConnectionStatus('connected');
-    } catch (error) {
-      console.error('[WebSocket] Connection failed:', error);
-      setConnectionStatus('error');
-      toast.error('Failed to connect to game server');
-      return;
-    }
+    await websocketManager.connect(); 
 
     setQueuing(mode, difficulty);
     
@@ -51,7 +43,7 @@ export const useGameSocket = (
       type: 'find_match',
       difficulty: mode === 'bot' ? (difficulty || 'easy') : '',
     });
-  }, [setQueuing, setConnectionStatus]);
+  }, [setQueuing]);
 
   const makeMove = useCallback((column: number) => {
     websocketManager.send({ type: 'make_move', column });
@@ -63,33 +55,27 @@ export const useGameSocket = (
 
   const disconnect = useCallback(() => {
     websocketManager.disconnect();
-    setConnectionStatus('disconnected');
-  }, [setConnectionStatus]);
+  }, []);
 
   const sendMessage = useCallback((message: Record<string, unknown>) => {
     websocketManager.send(message as any);
   }, []);
 
   const spectateGame = useCallback(async (gameId: string) => {
-    try {
-      setConnectionStatus('connecting');
-      await websocketManager.connect();
-      setConnectionStatus('connected');
-    } catch (error) {
-      console.error('[WebSocket] Connection failed:', error);
-      setConnectionStatus('error');
-      toast.error('Failed to connect to game server');
-      return;
-    }
-
+    websocketManager.connect();
     websocketManager.send({ type: 'watch_game', gameId });
-  }, [setConnectionStatus]);
+  }, []);
 
   const leaveSpectate = useCallback((gameId: string) => {
     websocketManager.send({ type: 'leave_spectate', gameId });
   }, []);
 
+  const connect = useCallback(async () => {
+    websocketManager.connect();
+  }, []);
+
   return {
+    connect,
     findMatch,
     makeMove,
     surrender,
