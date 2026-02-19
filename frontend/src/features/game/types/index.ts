@@ -59,6 +59,16 @@ export interface LeaveSpectateMessage {
 // WebSocket Server Messages (Received from Backend)
 // ============================================
 
+export interface OpponentDisconnectedMessage {
+  type: "opponent_disconnected";
+  message: string;
+  disconnectTimeout: number;
+}
+
+export interface OpponentReconnectedMessage {
+  type: "opponent_reconnected";
+}
+
 export type ServerMessage =
   | QueueJoinedMessage
   | QueueLeftMessage
@@ -74,6 +84,8 @@ export type ServerMessage =
   | SpectatorCountMessage
   | SpectateStartMessage
   | QueueTimeoutMessage
+  | OpponentDisconnectedMessage
+  | OpponentReconnectedMessage
   | ErrorMessage;
 
 export interface QueueTimeoutMessage {
@@ -139,6 +151,9 @@ export interface InitGameMessage {
 
 export interface GameStateMessage {
   type: "game_state";
+  gameId?: string;
+  yourPlayer?: 1 | 2;
+  opponent?: string;
   board: number[][];
   currentTurn: 1 | 2;
   lastMove?: {

@@ -23,6 +23,7 @@ import NotFound from "./pages/NotFound";
 import { queryClient } from "@/lib/react-query";
 import { useUIStore } from "@/stores/useUIStore";
 import { useEffect } from "react";
+import { ActiveGamePopup } from "@/features/game/components/ActiveGamePopup";
 
 const ThemeInitializer = () => {
   const { theme } = useUIStore();
@@ -51,6 +52,7 @@ const AppContent = () => {
   return (
     <>
       <ThemeInitializer />
+      <ActiveGamePopup />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />

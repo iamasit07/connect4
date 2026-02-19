@@ -44,6 +44,12 @@ interface GameStore {
   // Spectator state
   isSpectator: boolean;
   spectatorCount: number;
+  spectatorPlayer1: string | null;
+  spectatorPlayer2: string | null;
+
+  // Disconnection state
+  isOpponentDisconnected: boolean;
+  disconnectTimer: number;
 
   // Rematch state
   rematchStatus: RematchStatus;
@@ -68,6 +74,7 @@ interface GameStore {
     lastMove?: { column: number; row: number; player: number };
     timeLeft?: number;
   }) => void;
+  setOpponentDisconnected: (disconnected: boolean, timeLeft?: number) => void;
   endGame: (data: {
     winner: string;
     reason: string;
@@ -96,6 +103,19 @@ interface GameStore {
   setAllowRematch: (allow: boolean) => void;
 
   // Helpers
+  loadFinishedGame: (data: {
+    gameId: string;
+    board: Board;
+    player1: { username: string; id: number };
+    player2: { username: string; id: number | null };
+    winner: string | null;
+    reason: string;
+    myUserId: number;
+    winningCells?: { row: number; col: number }[];
+  }) => void;
+  isActiveGamePopupDismissed: boolean;
+  dismissActiveGamePopup: () => void;
+
   isMyTurn: () => boolean;
   getMyColor: () => "red" | "yellow" | null;
   canDropInColumn: (col: number) => boolean;
@@ -120,6 +140,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   gameMode: null,
   botDifficulty: null,
 
+  // Disconnection state
+  isOpponentDisconnected: false,
+  disconnectTimer: 0,
+
   // Timer state
   turnTimeLimit: TURN_TIME_LIMIT,
   timeLeft: TURN_TIME_LIMIT,
@@ -127,6 +151,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Spectator state
   isSpectator: false,
   spectatorCount: 0,
+  spectatorPlayer1: null,
+  spectatorPlayer2: null,
 
   // Rematch state
   rematchStatus: "idle",
@@ -148,6 +174,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       winReason: null,
       winningCells: null,
       rematchStatus: "idle",
+      isOpponentDisconnected: false,
+      disconnectTimer: 0,
     }),
 
   initGame: ({
@@ -172,7 +200,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       turnTimeLimit: turnTimeLimit || TURN_TIME_LIMIT,
       timeLeft: turnTimeLimit || TURN_TIME_LIMIT,
       isSpectator: false,
+      spectatorPlayer1: null,
+      spectatorPlayer2: null,
       rematchStatus: "idle",
+      isOpponentDisconnected: false,
+      disconnectTimer: 0,
     }),
 
   updateGameState: ({ board, currentTurn, lastMove, timeLeft }) =>
@@ -183,6 +215,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       timeLeft: timeLeft !== undefined ? timeLeft : state.turnTimeLimit,
     })),
 
+  setOpponentDisconnected: (disconnected, timeLeft) =>
+    set({
+      isOpponentDisconnected: disconnected,
+      disconnectTimer: timeLeft || 0,
+    }),
+
   endGame: ({ winner, reason, winningCells, board, allowRematch }) =>
     set((state) => ({
       gameStatus: "finished",
@@ -191,6 +229,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       winningCells: winningCells || null,
       board: board || state.board,
       allowRematch: allowRematch !== undefined ? allowRematch : true,
+      isOpponentDisconnected: false,
+      disconnectTimer: 0,
     })),
 
   resetGame: () =>
@@ -212,8 +252,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       timeLeft: TURN_TIME_LIMIT,
       isSpectator: false,
       spectatorCount: 0,
+      spectatorPlayer1: null,
+      spectatorPlayer2: null,
       rematchStatus: "idle",
       allowRematch: true,
+      isOpponentDisconnected: false,
+      disconnectTimer: 0,
     }),
 
   setTimeLeft: (time) => set({ timeLeft: time }),
@@ -235,14 +279,45 @@ export const useGameStore = create<GameStore>((set, get) => ({
       winningCells: null,
       lastMove: null,
       isSpectator: true,
+      spectatorPlayer1: player1,
+      spectatorPlayer2: player2,
       gameMode: "pvp",
       rematchStatus: "idle",
       allowRematch: false,
+      isOpponentDisconnected: false,
+      disconnectTimer: 0,
     }),
 
   setRematchStatus: (status) => set({ rematchStatus: status }),
 
+  loadFinishedGame: ({
+    gameId,
+    board,
+    player1,
+    player2,
+    winner,
+    reason,
+    myUserId,
+    winningCells,
+  }) =>
+    set({
+      gameId,
+      board,
+      gameStatus: "finished",
+      myPlayer: myUserId === player1.id ? 1 : player2.id && myUserId === player2.id ? 2 : null,
+      opponent: myUserId === player1.id ? (player2.username || "Bot") : player1.username,
+      winner,
+      winReason: reason,
+      winningCells: winningCells || null,
+      isSpectator: myUserId !== player1.id && (!player2.id || myUserId !== player2.id),
+      isOpponentDisconnected: false,
+      disconnectTimer: 0,
+    }),
+
   setAllowRematch: (allow) => set({ allowRematch: allow }),
+
+  isActiveGamePopupDismissed: false,
+  dismissActiveGamePopup: () => set({ isActiveGamePopupDismissed: true }),
 
   isMyTurn: () => {
     const { myPlayer, currentTurn, gameStatus, isSpectator } = get();
