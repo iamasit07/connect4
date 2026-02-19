@@ -28,6 +28,10 @@ type GameSession struct {
 	RematchRequester    *int64      // userID of player who requested rematch
 	RematchRequestTimer *time.Timer // 10-second window to accept rematch request
 	TurnTimer           *time.Timer // 30-minute turn timer
+	DisconnectTimer     *time.Timer      // Shared grace period timer
+	DisconnectTime      time.Time        // When the disconnect timer started
+	DisconnectedPlayers map[int64]bool   // Set of currently disconnected player IDs
+
 	mu                  sync.Mutex
 	repo                GameRepository
 	sessionManager      *SessionManager
@@ -238,7 +242,7 @@ func (sm *SessionManager) ForceCleanupForUser(userID int64, conn ConnectionManag
 	} else {
 		// Game is still active — abandon it (saves to DB, notifies opponent)
 		session.mu.Unlock()
-		session.TerminateSessionByAbandonment(userID, conn)
+		session.TerminateSessionWithReason(userID, conn, "abandonment")
 	}
 
 	sm.RemoveSession(gameID)
@@ -436,6 +440,7 @@ func NewGameSession(player1ID int64, player1Username string, player2ID *int64, p
 		mu:              sync.Mutex{},
 		repo:            repo,
 		sessionManager:  sm,
+		DisconnectedPlayers: make(map[int64]bool),
 	}
 
 	gs.startTurnTimer(conn)
@@ -768,15 +773,56 @@ func (gs *GameSession) HandleBotMove(conn ConnectionManagerInterface) error {
 func (gs *GameSession) HandleDisconnect(userID int64, conn ConnectionManagerInterface, sessionManager *SessionManager) error {
 	gs.mu.Lock()
 
-	// If game is already finished, just clean up
 	if gs.Game.IsFinished() {
+		if gs.DisconnectTimer != nil {
+			gs.DisconnectTimer.Stop()
+			gs.DisconnectTimer = nil
+		}
 		if gs.RematchRequester != nil {
 			gs.CancelRematchRequest(conn)
 		}
-		if gs.PostGameTimer != nil {
-			gs.PostGameTimer.Stop()
-			gs.PostGameTimer = nil
+		gs.cleanupConnections(conn)
+		gameID := gs.GameID
+		gs.mu.Unlock() // Unlock before calling SessionManager
+		sessionManager.RemoveSession(gameID)
+		return nil
+	}
+
+	username := gs.GetUsernameByUserID(userID)
+	opponentID := gs.GetOpponentID(userID)
+
+	log.Printf("[DISCONNECT] Player %s (ID: %d) disconnected from game %s", username, userID, gs.GameID)
+
+	gs.DisconnectedPlayers[userID] = true
+	if gs.Player2ID != nil && gs.DisconnectedPlayers[gs.Player1ID] && gs.DisconnectedPlayers[*gs.Player2ID] {
+		log.Printf("[DISCONNECT] Both players disconnected. Ending game as DRAW immediately.")
+		
+		if gs.DisconnectTimer != nil {
+			gs.DisconnectTimer.Stop()
+			gs.DisconnectTimer = nil
 		}
+
+		gs.FinishedAt = time.Now()
+		gs.Reason = "mutual_disconnect"
+		gs.Game.Status = domain.StatusDraw 
+		
+		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
+		allowRematch := false
+
+		gameOverMsg := domain.ServerMessage{
+			Type:         "game_over",
+			Winner:       "draw", 
+			Reason:       gs.Reason,
+			Board:        gs.Game.Board,
+			AllowRematch: &allowRematch,
+		}
+		
+		// Notify (mostly for logs/spectators since players are gone)
+		gs.broadcastToSpectators(conn, gameOverMsg)
+
+		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username, gs.Player2ID, gs.Player2Username,
+			nil, "draw", gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt, convertBoardToInts(gs.Game.Board))
+
 		gs.cleanupConnections(conn)
 		gameID := gs.GameID
 		gs.mu.Unlock()
@@ -784,43 +830,183 @@ func (gs *GameSession) HandleDisconnect(userID int64, conn ConnectionManagerInte
 		return nil
 	}
 
-	username := gs.GetUsernameByUserID(userID)
-	opponentID := gs.GetOpponentID(userID)
-	opponentUsername := gs.GetOpponentUsername(userID)
-
-	log.Printf("[DISCONNECT] Player %s (ID: %d) disconnected from game %s - ending by abandonment", username, userID, gs.GameID)
-
-	gs.FinishedAt = time.Now()
-	gs.Reason = "disconnect"
-
-	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
-	allowRematch := false
-	gameOverMsg := domain.ServerMessage{
-		Type:         "game_over",
-		Winner:       opponentUsername,
-		Reason:       "disconnect",
-		AllowRematch: &allowRematch,
+	// If timer is already running, let it continue (Opponent disconnected first)
+	if gs.DisconnectTimer != nil {
+		gs.mu.Unlock() 
+		return nil
 	}
 
-	conn.SendMessage(userID, gameOverMsg)
-	if !gs.IsBot() && opponentID != nil {
-		conn.SendMessage(*opponentID, gameOverMsg)
+	// --- 3. NOTIFY OPPONENT ---
+	if opponentID != nil && !gs.DisconnectedPlayers[*opponentID] {
+		conn.SendMessage(*opponentID, domain.ServerMessage{
+			Type:              "opponent_disconnected",
+			Message:           "Opponent disconnected. Game will end in 60s.",
+			DisconnectTimeout: 60,
+		})
 	}
-	gs.broadcastToSpectators(conn, gameOverMsg)
 
-	gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username,
-		gs.Player2ID, gs.Player2Username, opponentID, opponentUsername,
-		gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt, convertBoardToInts(gs.Game.Board))
+	// --- 4. START 60-SECOND TIMER ---
+	log.Printf("[DISCONNECT] Starting 60s session termination timer.")
+	gs.DisconnectTime = time.Now()
+	gs.DisconnectTimer = time.AfterFunc(60*time.Second, func() {
+		gs.mu.Lock()
+		
+		// RACE CONDITION FIX: Check if game ended while we were waiting for lock
+		// (e.g., Mutual Disconnect happened 0.1s ago)
+		if gs.Game.IsFinished() {
+			gs.DisconnectTimer = nil
+			gs.mu.Unlock()
+			return
+		}
 
-	gs.cleanupConnections(conn)
-	gameID := gs.GameID
-	gs.mu.Unlock()
-	sessionManager.RemoveSession(gameID)
+		// Double check: If everyone reconnected
+		if len(gs.DisconnectedPlayers) == 0 {
+			gs.DisconnectTimer = nil
+			gs.mu.Unlock()
+			return
+		}
+
+		log.Printf("[DISCONNECT] Session timer expired. Forfeiting game.")
+		
+		gs.FinishedAt = time.Now()
+		gs.Reason = "disconnect" // Abandonment
+		gs.DisconnectTimer = nil
+
+		duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
+		allowRematch := false
+
+		var winnerID *int64
+		var winnerUsername string
+		
+		// Determine winner based on who is LEFT
+		if gs.DisconnectedPlayers[gs.Player1ID] {
+			// P1 is gone. P2 wins if present.
+			if gs.Player2ID != nil && !gs.DisconnectedPlayers[*gs.Player2ID] {
+				winnerID = gs.Player2ID
+				winnerUsername = gs.Player2Username
+				gs.Game.Status = domain.StatusWon
+			} else {
+				// Fallback safety
+				winnerUsername = "None" 
+				gs.Game.Status = domain.StatusDraw
+			}
+		} else if gs.Player2ID != nil && gs.DisconnectedPlayers[*gs.Player2ID] {
+			// P2 is gone. P1 wins.
+			winnerID = &gs.Player1ID
+			winnerUsername = gs.Player1Username
+			gs.Game.Status = domain.StatusWon
+		}
+
+		gameOverMsg := domain.ServerMessage{
+			Type:         "game_over",
+			Winner:       winnerUsername,
+			Reason:       gs.Reason,
+			Board:        gs.Game.Board,
+			AllowRematch: &allowRematch,
+		}
+
+		// Notify anyone still connected
+		conn.SendMessage(gs.Player1ID, gameOverMsg)
+		if gs.Player2ID != nil {
+			conn.SendMessage(*gs.Player2ID, gameOverMsg)
+		}
+		gs.broadcastToSpectators(conn, gameOverMsg)
+		
+		gs.saveGameAsync(gs.GameID, gs.Player1ID, gs.Player1Username, gs.Player2ID, gs.Player2Username,
+			winnerID, winnerUsername, gs.Reason, gs.Game.MoveCount, duration, gs.CreatedAt, gs.FinishedAt, convertBoardToInts(gs.Game.Board))
+
+		gs.cleanupConnections(conn)
+		gameID := gs.GameID
+		
+		gs.mu.Unlock()
+		sessionManager.RemoveSession(gameID)
+	})
+	
+	gs.mu.Unlock() 
+	return nil
+}
+
+// HandleReconnect handles a user reconnecting to the game
+func (gs *GameSession) HandleReconnect(userID int64, conn ConnectionManagerInterface) error {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	if gs.Game.IsFinished() {
+		return fmt.Errorf("game is finished")
+	}
+
+	// Mark user as connected
+	if gs.DisconnectedPlayers[userID] {
+		log.Printf("[RECONNECT] Player %d reconnected to game %s", userID, gs.GameID)
+		delete(gs.DisconnectedPlayers, userID)
+
+        // Only stop timer if NO players are disconnected
+        if len(gs.DisconnectedPlayers) == 0 {
+            if gs.DisconnectTimer != nil {
+                log.Printf("[RECONNECT] All players connected. Stopping timer.")
+                gs.DisconnectTimer.Stop()
+                gs.DisconnectTimer = nil
+            }
+        } else {
+             log.Printf("[RECONNECT] Player connected, but session timer continues (other player still missing).")
+        }
+
+		// Notify opponent
+		opponentID := gs.GetOpponentID(userID)
+		if opponentID != nil {
+			conn.SendMessage(*opponentID, domain.ServerMessage{
+				Type:    "opponent_reconnected",
+				Message: "Opponent reconnected!",
+			})
+		}
+	}
+
+	conn.SendMessage(userID, domain.ServerMessage{
+		Type:        "game_state",
+		GameID:      gs.GameID,
+		Board:       gs.Game.Board,
+		CurrentTurn: int(gs.Game.CurrentPlayer),
+		YourPlayer:  int(gs.PlayerMapping[userID]),
+		Opponent:    gs.GetOpponentUsername(userID),
+	})
 
 	return nil
 }
 
-func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, conn ConnectionManagerInterface) error {
+// HandleGetState sends the current game state to the user
+func (gs *GameSession) HandleGetState(userID int64, conn ConnectionManagerInterface) {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+
+	// Send current game state
+	conn.SendMessage(userID, domain.ServerMessage{
+		Type:        "game_state",
+		GameID:      gs.GameID,
+		Board:       gs.Game.Board,
+		CurrentTurn: int(gs.Game.CurrentPlayer),
+		YourPlayer:  int(gs.PlayerMapping[userID]),
+		Opponent:    gs.GetOpponentUsername(userID),
+	})
+
+    // If opponent is disconnected, remind the user
+    opponentID := gs.GetOpponentID(userID)
+    if opponentID != nil && gs.DisconnectedPlayers[*opponentID] {
+         if gs.DisconnectTimer != nil {
+             remaining := 60 - int(time.Since(gs.DisconnectTime).Seconds())
+             if remaining < 0 {
+                 remaining = 0
+             }
+             conn.SendMessage(userID, domain.ServerMessage{
+                 Type: "opponent_disconnected",
+                 Message: "Opponent disconnected",
+                 DisconnectTimeout: remaining, 
+             })
+         }
+    }
+}
+
+
+func (gs *GameSession) TerminateSessionWithReason(abandoningUserID int64, conn ConnectionManagerInterface, reason string) error {
 	gs.mu.Lock()
 	defer gs.mu.Unlock()
 
@@ -832,7 +1018,7 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 		gs.GameID, abandoningUsername, abandoningUserID)
 
 	gs.FinishedAt = time.Now()
-	gs.Reason = "surrender"
+	gs.Reason = reason
 	gs.Game.Status = domain.StatusWon
 
 	duration := int(gs.FinishedAt.Sub(gs.CreatedAt).Seconds())
@@ -841,7 +1027,7 @@ func (gs *GameSession) TerminateSessionByAbandonment(abandoningUserID int64, con
 	gameOverMsg := domain.ServerMessage{
 		Type:         "game_over",
 		Winner:       opponentUsername,
-		Reason:       "surrender",
+		Reason:       reason,
 		AllowRematch: &allowRematch,
 	}
 

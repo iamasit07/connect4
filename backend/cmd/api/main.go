@@ -95,7 +95,7 @@ func main() {
 	go matchmaking.MatchMakingListener(matchmakingQueue, connManager, sessionManager)
 
 	// 6. Initialize HTTP Handlers (API Layer)
-	authHandler := transportHttp.NewAuthHandler(userRepo, sessionRepo, connManager, cache, authService)
+	authHandler := transportHttp.NewAuthHandler(userRepo, sessionRepo, connManager, cache, authService, sessionManager)
 	historyHandler := transportHttp.NewHistoryHandler(gameRepo)
 	oauthHandler := transportHttp.NewOAuthHandler(userRepo, sessionRepo, &cfg.OAuthConfig, connManager)
 	wsHandler := websocket.NewHandler(connManager, matchmakingQueue, sessionManager, gameService, authService)

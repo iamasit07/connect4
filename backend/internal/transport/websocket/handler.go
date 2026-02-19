@@ -21,18 +21,13 @@ import (
 )
 
 const (
-	// maxMessageSize is the maximum allowed WebSocket message payload (4KB).
-	// Prevents memory exhaustion from oversized messages.
 	maxMessageSize = 4096
-
-	// maxConnsPerIP limits concurrent WebSocket connections from a single IP.
 	maxConnsPerIP = 5
-
-	// writeTimeout is the deadline for writing a message to the peer.
 	writeTimeout = 10 * time.Second
+	pongWait = 60 * time.Second
+	pingInterval = 20 * time.Second
 )
 
-// ipConnTracker tracks the number of active WebSocket connections per IP address.
 type ipConnTracker struct {
 	mu    sync.Mutex
 	conns map[string]int
@@ -149,26 +144,32 @@ func (h *Handler) HandleWebSocket(c *gin.Context) {
 
 // handleConnection manages the lifecycle of a single WebSocket connection
 func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
-	// Decrement IP connection count when this connection closes
 	defer h.ipTracker.Decrement(clientIP)
 
-	// Set read deadline to detect stale connections
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	// Use a context to cleanly shut down the ping goroutine
+	ctx, cancelPing := context.WithCancel(context.Background())
+	defer cancelPing() // This kills the ping goroutine when handleConnection exits
 
-	// Keep-alive pinger with write deadline
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(pingInterval)
 		defer ticker.Stop()
-		for range ticker.C {
-			conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
+		for {
+			select {
+			case <-ctx.Done():
+				return // Clean exit when connection closes
+			case <-ticker.C:
+				conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					return
+				}
 			}
 		}
 	}()
 
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
 
@@ -202,9 +203,14 @@ func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
 		}
 		userID = claims.UserID
 		username = claims.Username
-		sessionID = claims.SessionID // Store session ID for subsequent checks
-
+		sessionID = claims.SessionID
 		h.ConnManager.AddConnection(userID, conn, username)
+
+		if session, exists := h.SessionManager.GetSessionByUserID(userID); exists {
+			if err := session.HandleReconnect(userID, h.ConnManager); err != nil {
+				log.Printf("[WS] Reconnect failed for user %d: %v", userID, err)
+			}
+		}
 	} else {
 		log.Printf("[WS] Missing initialization or token")
 		conn.Close()
@@ -215,10 +221,11 @@ func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
 	defer func() {
 		h.Matchmaking.RemovePlayer(userID)
 
-		// Notify game session if active
-		gameSession, exists := h.SessionManager.GetSessionByUserID(userID)
-		if exists {
-			gameSession.HandleDisconnect(userID, h.ConnManager, h.SessionManager)
+		if h.ConnManager.IsCurrentConnection(userID, conn) {
+			gameSession, exists := h.SessionManager.GetSessionByUserID(userID)
+			if exists {
+				gameSession.HandleDisconnect(userID, h.ConnManager, h.SessionManager)
+			}
 		}
 
 		// Clean up spectator status across all sessions
@@ -226,6 +233,9 @@ func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
 
 		h.ConnManager.RemoveConnectionIfMatching(userID, conn)
 	}()
+
+	lastSessionCheck := time.Now()
+	const sessionCheckInterval = 30 * time.Second
 
 	// 3. Main Message Loop
 	for {
@@ -261,40 +271,45 @@ func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
 			}
 			sessionID = claims.SessionID
 		} else {
-			// Verify the session is still the active one in DB
-			// This catches if user logged in from another device
-			sess, err := h.AuthService.GetSession(sessionID)
-			if err != nil {
-				log.Printf("[WS] Session lookup error for sessionID=%s, userID=%d: %v", sessionID, userID, err)
-				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session lookup failed"})
-				return
-			}
-			if sess == nil {
-				log.Printf("[WS] Session not found: sessionID=%s, userID=%d", sessionID, userID)
-				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session not found"})
-				return
-			}
-			if !sess.IsActive {
-				log.Printf("[WS] Session inactive: sessionID=%s, userID=%d, IsActive=%v", sessionID, userID, sess.IsActive)
-				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session expired or logged out"})
-				return
-			}
-			// Additional check: Verify this session is still the user's active session
-			activeSession, err := h.AuthService.GetActiveSession(userID)
-			if err != nil {
-				log.Printf("[WS] Active session lookup error for userID=%d: %v", userID, err)
-			} else if activeSession == nil {
-				log.Printf("[WS] No active session found for userID=%d", userID)
-				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "No active session"})
-				return
-			} else if activeSession.SessionID != sessionID {
-				log.Printf("[WS] Session mismatch: current=%s, active=%s, userID=%d - User logged in from another device",
-					sessionID, activeSession.SessionID, userID)
-				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Logged in from another device"})
-				return
+			// Debounce session check to avoid DB hammering and race conditions
+			if time.Since(lastSessionCheck) > sessionCheckInterval {
+				lastSessionCheck = time.Now()
+
+				// Verify the session is still the active one in DB
+				// This catches if user logged in from another device
+				sess, err := h.AuthService.GetSession(sessionID)
+				if err != nil {
+					log.Printf("[WS] Session lookup error for sessionID=%s, userID=%d: %v", sessionID, userID, err)
+					// Don't kill connection immediately on db error, just log
+				} else if sess == nil {
+					log.Printf("[WS] Session not found: sessionID=%s, userID=%d", sessionID, userID)
+					h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session not found"})
+					return
+				} else if !sess.IsActive {
+					log.Printf("[WS] Session inactive: sessionID=%s, userID=%d, IsActive=%v", sessionID, userID, sess.IsActive)
+					h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session expired or logged out"})
+					return
+				}
+
+				// Additional check: Verify this session is still the user's active session
+				activeSession, err := h.AuthService.GetActiveSession(userID)
+				if err != nil {
+					log.Printf("[WS] Active session lookup error for userID=%d: %v", userID, err)
+				} else if activeSession == nil {
+					log.Printf("[WS] No active session found for userID=%d", userID)
+					h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "No active session"})
+					return
+				} else if activeSession.SessionID != sessionID {
+					log.Printf("[WS] Session mismatch: current=%s, active=%s, userID=%d - User logged in from another device",
+						sessionID, activeSession.SessionID, userID)
+					
+					// Graceful close instead of abrupt disconnect
+					conn.WriteJSON(domain.ServerMessage{Type: "error", Message: "Logged in from another device"})
+					conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session replaced"))
+					return
+				}
 			}
 		}
-		// ---------------------------------------------
 
 		h.processMessage(userID, msg)
 	}
@@ -321,12 +336,6 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 		rateLimitKey := fmt.Sprintf("ratelimit:find_match:%d", userID)
 		if !h.checkRateLimit(rateLimitKey, 3*time.Second) {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Too many requests. Please wait."})
-			return
-		}
-
-		// Enforce one active queue/game per user
-		if _, inGame := h.SessionManager.GetSessionByUserID(userID); inGame {
-			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "You are already in a game"})
 			return
 		}
 
@@ -386,7 +395,7 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 		if !exists {
 			return
 		}
-		gameSession.TerminateSessionByAbandonment(userID, h.ConnManager)
+		gameSession.TerminateSessionWithReason(userID, h.ConnManager, "surrender")
 
 	case "watch_game":
 		gameSession, exists := h.SessionManager.GetSessionByGameID(msg.GameID)
@@ -406,20 +415,24 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 		if gameSession, exists := h.SessionManager.GetSessionByGameID(msg.GameID); exists {
 			gameSession.RemoveSpectator(userID)
 		}
+
+	case "get_game_state":
+		if gameSession, exists := h.SessionManager.GetSessionByUserID(userID); exists {
+			gameSession.HandleGetState(userID, h.ConnManager)
+		}
+
 	}
 }
 
-// checkRateLimit uses Redis to enforce a per-key cooldown.
-// Returns true if the action is allowed, false if rate-limited.
 func (h *Handler) checkRateLimit(key string, window time.Duration) bool {
 	if redis.RedisClient == nil || !redis.IsRedisEnabled() {
-		return true // If Redis is unavailable, allow (fail open)
+		return true
 	}
 	ctx := context.Background()
 	ok, err := redis.RedisClient.SetNX(ctx, key, 1, window).Result()
 	if err != nil {
 		log.Printf("[WS] Rate limit check failed for key %s: %v", key, err)
-		return true // Fail open on Redis error
+		return true
 	}
 	return ok
 }

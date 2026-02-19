@@ -74,6 +74,13 @@ func (cm *ConnectionManager) RemoveConnectionIfMatching(userID int64, conn *webs
 	}
 }
 
+func (cm *ConnectionManager) IsCurrentConnection(userID int64, conn *websocket.Conn) bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	currentConn, exists := cm.connections[userID]
+	return exists && currentConn == conn
+}
+
 // SendMessage sends a JSON message to a specific user securely
 func (cm *ConnectionManager) SendMessage(userID int64, message domain.ServerMessage) error {
 	// 1. Acquire global read lock to find the user's socket & mutex
