@@ -79,7 +79,11 @@ export const GameInfo = () => {
             flex-1 flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl border
             ${isP1Turn ? "bg-primary/5 ring-1 ring-primary/50" : "bg-card/50"}
             transition-all duration-300
-            ${leftSideWon ? "!ring-2 !ring-yellow-500 !bg-yellow-500/10" : ""}
+            ${leftSideWon 
+              ? (isSpectator ? "red" : myColor) === "red" 
+                ? "!ring-2 !ring-red-500 !bg-red-500/10" 
+                : "!ring-2 !ring-yellow-500 !bg-yellow-500/10"
+              : ""}
           `}
         >
           <div className="w-8 h-8 sm:w-10 sm:h-10 relative flex-shrink-0">
@@ -88,9 +92,13 @@ export const GameInfo = () => {
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="absolute -top-2 -left-2 bg-background rounded-full p-0.5 shadow-sm border border-yellow-500/50"
+                className={`absolute -top-2 -left-2 bg-background rounded-full p-0.5 shadow-sm border ${
+                  (isSpectator ? "red" : myColor) === "red" ? "border-red-500/50" : "border-yellow-500/50"
+                }`}
               >
-                <Crown className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500 fill-yellow-500" />
+                <Crown className={`w-3 h-3 sm:w-4 sm:h-4 ${
+                  (isSpectator ? "red" : myColor) === "red" ? "text-red-500 fill-red-500" : "text-yellow-500 fill-yellow-500"
+                }`} />
               </motion.div>
             )}
           </div>
@@ -99,7 +107,13 @@ export const GameInfo = () => {
               <p className="font-semibold text-sm sm:text-base truncate">
                 {isSpectator ? (spectatorPlayer1 || "Player 1") : "You"}
               </p>
-              {leftSideWon && <span className="text-[10px] bg-yellow-500 text-white px-1.5 py-0.5 rounded-full font-bold shadow-sm">WIN</span>}
+              {leftSideWon && (
+                <span className={`text-[10px] text-white px-1.5 py-0.5 rounded-full font-bold shadow-sm ${
+                  (isSpectator ? "red" : myColor) === "red" ? "bg-red-500" : "bg-yellow-500"
+                }`}>
+                  WIN
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 h-4">
                <p className="text-[10px] sm:text-xs text-muted-foreground capitalize leading-none">
@@ -152,7 +166,11 @@ export const GameInfo = () => {
             flex-1 flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl border flex-row-reverse text-right
             ${isP2Turn ? "bg-primary/5 ring-1 ring-primary/50" : "bg-card/50"}
             transition-all duration-300
-            ${rightSideWon ? "!ring-2 !ring-yellow-500 !bg-yellow-500/10" : ""}
+            ${rightSideWon 
+              ? (isSpectator ? "yellow" : opponentColor) === "red"
+                ? "!ring-2 !ring-red-500 !bg-red-500/10"
+                : "!ring-2 !ring-yellow-500 !bg-yellow-500/10"
+              : ""}
           `}
         >
           <div className="w-8 h-8 sm:w-10 sm:h-10 relative flex-shrink-0">
@@ -161,15 +179,25 @@ export const GameInfo = () => {
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="absolute -top-2 -right-2 bg-background rounded-full p-0.5 shadow-sm border border-yellow-500/50"
+                className={`absolute -top-2 -right-2 bg-background rounded-full p-0.5 shadow-sm border ${
+                  (isSpectator ? "yellow" : opponentColor) === "red" ? "border-red-500/50" : "border-yellow-500/50"
+                }`}
               >
-                <Crown className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500 fill-yellow-500" />
+                <Crown className={`w-3 h-3 sm:w-4 sm:h-4 ${
+                  (isSpectator ? "yellow" : opponentColor) === "red" ? "text-red-500 fill-red-500" : "text-yellow-500 fill-yellow-500"
+                }`} />
               </motion.div>
             )}
           </div>
           <div className="flex-1 min-w-0 flex flex-col justify-center">
             <div className="flex items-center gap-2 justify-end">
-              {rightSideWon && <span className="text-[10px] bg-yellow-500 text-white px-1.5 py-0.5 rounded-full font-bold shadow-sm">WIN</span>}
+              {rightSideWon && (
+                <span className={`text-[10px] text-white px-1.5 py-0.5 rounded-full font-bold shadow-sm ${
+                  (isSpectator ? "yellow" : opponentColor) === "red" ? "bg-red-500" : "bg-yellow-500"
+                }`}>
+                  WIN
+                </span>
+              )}
                <p className="font-semibold text-sm sm:text-base truncate">
                 {isSpectator ? (spectatorPlayer2 || "Player 2") : opponent || "Opponent"}
               </p>

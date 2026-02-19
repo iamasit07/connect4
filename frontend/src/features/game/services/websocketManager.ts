@@ -12,6 +12,8 @@ class WebSocketManager {
   private currentConnectionId: number = 0;
   private onGameStartCallbacks: Set<(gameId: string) => void> = new Set();
   private disconnectToastId: string | number | undefined;
+  private pendingBotMoveTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pendingGameOver: ServerMessage | null = null;
 
   public onMessage(handler: MessageHandler) {
     this.messageHandlers.add(handler);
@@ -62,6 +64,7 @@ class WebSocketManager {
           this.reconnectAttempts = 0; // Reset on success
           this.isReconnecting = false;
           this.setupListeners(ws);
+          useGameStore.getState().setConnectionStatus('connected');
           resolve();
         };
 
@@ -246,12 +249,19 @@ class WebSocketManager {
         const currentTurn = message.nextTurn;
 
         if (isBotGame && wasOpponentMove) {
-          setTimeout(() => {
+          this.pendingBotMoveTimeout = setTimeout(() => {
+            this.pendingBotMoveTimeout = null;
             store.updateGameState({
               board: message.board as Board,
               currentTurn: currentTurn,
               lastMove: message.lastMove,
             });
+            // Process any queued game_over that arrived during the delay
+            if (this.pendingGameOver) {
+              const queuedMsg = this.pendingGameOver;
+              this.pendingGameOver = null;
+              this.processGameOver(queuedMsg);
+            }
           }, BOT_MOVE_DELAY);
         } else {
           store.updateGameState({
@@ -285,13 +295,16 @@ class WebSocketManager {
       }
 
       case "game_over":
-        store.endGame({
-          winner: message.winner,
-          reason: message.reason,
-          winningCells: message.winningCells,
-          board: message.board as Board,
-          allowRematch: message.allowRematch,
-        });
+        if (this.pendingBotMoveTimeout) {
+          // Queue game_over so the bot's winning move renders first
+          this.pendingGameOver = message;
+        } else {
+          this.processGameOver(message);
+        }
+        break;
+
+      case "no_active_game":
+        this.handleNoActiveGame();
         break;
 
       case "rematch_request":
@@ -346,6 +359,33 @@ class WebSocketManager {
       default:
         break;
     }
+  }
+
+  private processGameOver(message: ServerMessage) {
+    const store = useGameStore.getState();
+    store.endGame({
+      winner: (message as any).winner,
+      reason: (message as any).reason,
+      winningCells: (message as any).winningCells,
+      board: (message as any).board as Board,
+      allowRematch: (message as any).allowRematch,
+    });
+  }
+
+  private handleNoActiveGame() {
+    const store = useGameStore.getState();
+
+    // Stop reconnection loop
+    this.resetConnectionState();
+    store.setConnectionStatus('disconnected');
+
+    // Reset game status to 'idle' so the GamePage's fetchGame effect
+    // can kick in and load the finished game from the REST API
+    if (store.gameStatus === 'playing') {
+      store.setConnectionStatus('disconnected');
+    }
+
+    toast.info("Game session has ended.");
   }
 }
 

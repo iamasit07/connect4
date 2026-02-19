@@ -21,8 +21,11 @@ interface HeaderProps {
 export const Header = ({ onLogout }: HeaderProps) => {
   const { theme, setTheme } = useUIStore();
   
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  const effectiveTheme = theme === 'system' ? systemTheme : theme;
+  
   const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
+    setTheme(effectiveTheme === 'dark' ? 'light' : 'dark');
   };
   
   const { user, isAuthenticated } = useAuthStore();
@@ -46,7 +49,7 @@ export const Header = ({ onLogout }: HeaderProps) => {
 
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={toggleTheme}>
-            {theme === 'dark' ? (
+            {effectiveTheme === 'dark' ? (
               <Sun className="h-5 w-5" />
             ) : (
               <Moon className="h-5 w-5" />

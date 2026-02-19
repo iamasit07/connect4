@@ -86,7 +86,13 @@ export type ServerMessage =
   | QueueTimeoutMessage
   | OpponentDisconnectedMessage
   | OpponentReconnectedMessage
+  | NoActiveGameMessage
   | ErrorMessage;
+
+export interface NoActiveGameMessage {
+  type: "no_active_game";
+  message: string;
+}
 
 export interface QueueTimeoutMessage {
   type: "queue_timeout";

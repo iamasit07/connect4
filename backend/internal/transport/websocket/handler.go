@@ -419,6 +419,11 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 	case "get_game_state":
 		if gameSession, exists := h.SessionManager.GetSessionByUserID(userID); exists {
 			gameSession.HandleGetState(userID, h.ConnManager)
+		} else {
+			h.ConnManager.SendMessage(userID, domain.ServerMessage{
+				Type:    "no_active_game",
+				Message: "No active game session found",
+			})
 		}
 
 	}
