@@ -8,8 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Info } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { GoogleButton } from './GoogleButton';
+import { isInAppBrowser } from '@/lib/utils';
 
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -25,6 +28,7 @@ export const LoginForm = () => {
     password: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const isEmbedded = isInAppBrowser();
 
   const validate = () => {
     const result = loginSchema.safeParse(formData);
@@ -75,6 +79,15 @@ export const LoginForm = () => {
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
+            {isEmbedded && (
+              <Alert variant="destructive" className="bg-destructive/10 text-destructive border-destructive/20 mb-4 text-xs md:text-sm">
+                <Info className="h-4 w-4 shrink-0" />
+                <AlertDescription className="ml-2 font-medium">
+                  It looks like you're using an in-app browser. Google Sign-In requires a standard browser. Please click the menu icon (⋮) and select <strong>'Open in Chrome / Browser'</strong> to log in.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <GoogleButton 
               onClick={handleGoogleLogin} 
               isLoading={googleLoading}
