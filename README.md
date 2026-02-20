@@ -12,6 +12,23 @@ Connect 4 is a full-stack, real-time multiplayer web game where two players take
 
 ---
 
+## 📚 Documentation
+
+- [Developer Guide](./DEVELOPER.md) - Setup, architecture, and contribution guidelines.
+- [Backend Logic Deep Dive](./BACKEND_LOGIC.md) - Detailed breakdown of the game engine, WebSockets, and bots.
+
+---
+
+## 📸 Screenshots
+
+![Landing Screen](assets/landing.png)
+![Dashboard Screen](assets/dashboard.png)
+![Lobby Screen](assets/lobby.png)
+![Gameplay](assets/game.png)
+![Leaderboard](assets/leaderboard.png)
+
+---
+
 ## ✨ Features
 
 - **🎮 Play vs Players** — Real-time PvP matchmaking with automatic opponent pairing via WebSocket
