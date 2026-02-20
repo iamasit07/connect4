@@ -21,7 +21,7 @@ Connect 4 is a full-stack, real-time multiplayer web game where two players take
 
 ## 📸 Screenshots
 
-![Landing Screen](assets/landing.png)
+![Landing Screen](assets/Landing.png)
 ![Dashboard Screen](assets/dashboard.png)
 ![Lobby Screen](assets/lobby.png)
 ![Gameplay](assets/game.png)
