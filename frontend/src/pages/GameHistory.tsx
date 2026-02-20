@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
-import { History, Trophy, X, Minus, Loader2, RefreshCw } from 'lucide-react';
+import { History, Trophy, X, Minus, Loader2, RefreshCw, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,20 @@ import type { GameHistoryItem } from '@/features/game/types';
 const GameHistory = () => {
   const { data, isLoading, error, refetch } = useGameHistory();
   const games = data ?? [];
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showRefreshed, setShowRefreshed] = useState(false);
+
+  const handleRefresh = async () => {
+    if (isRefreshing || showRefreshed) return;
+    setIsRefreshing(true);
+    await refetch();
+    setIsRefreshing(false);
+    setShowRefreshed(true);
+    setTimeout(() => {
+      setShowRefreshed(false);
+    }, 5000);
+  };
 
   const groupGamesByDate = (games: GameHistoryItem[]) => {
     const groups: Record<string, GameHistoryItem[]> = {};
@@ -94,12 +108,22 @@ const GameHistory = () => {
         </div>
         <Button
           variant="ghost"
-          size="icon"
-          className="ml-auto"
-          onClick={() => refetch()}
+          size={showRefreshed ? "default" : "icon"}
+          className={`ml-auto transition-all ${showRefreshed ? 'bg-green-500/10 text-green-600 hover:bg-green-500/20 hover:text-green-700' : ''}`}
+          onClick={handleRefresh}
+          disabled={isRefreshing || showRefreshed}
           title="Refresh history"
         >
-          <RefreshCw className="h-5 w-5" />
+          {isRefreshing ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : showRefreshed ? (
+            <span className="flex items-center gap-2 font-medium">
+              <Check className="h-4 w-4" />
+              Refreshed
+            </span>
+          ) : (
+            <RefreshCw className="h-5 w-5" />
+          )}
         </Button>
       </div>
 

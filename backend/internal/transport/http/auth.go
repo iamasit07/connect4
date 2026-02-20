@@ -320,7 +320,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		if h.Cache != nil {
 			cacheKey := fmt.Sprintf("user_profile:%d", userID)
 			if data, err := json.Marshal(response); err == nil {
-				h.Cache.Set(c.Request.Context(), cacheKey, data, time.Hour)
+				h.Cache.Set(c.Request.Context(), cacheKey, data, 5 * time.Second)
 			}
 		}
 		c.Header("X-Cache", "MISS")

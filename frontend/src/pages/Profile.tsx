@@ -11,6 +11,7 @@ import {
   Loader2,
   Camera,
   Trash2,
+  LogOut,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,9 +26,11 @@ import {
   useUploadAvatar,
   useRemoveAvatar,
 } from "@/hooks/queries/useAuthQueries";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 
 const Profile = () => {
   const { user, setUser } = useAuthStore();
+  const { logout } = useAuth();
   const updateProfileMutation = useUpdateProfile();
   const uploadAvatarMutation = useUploadAvatar();
   const removeAvatarMutation = useRemoveAvatar();
@@ -155,14 +158,24 @@ const Profile = () => {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Account Details</CardTitle>
             {!isEditing ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsEditing(true)}
-              >
-                <Edit2 className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditing(true)}
+                >
+                  <Edit2 className="h-4 w-4 mr-2" />
+                  Edit
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={logout}
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout
+                </Button>
+              </div>
             ) : (
               <div className="flex gap-2">
                 <Button
