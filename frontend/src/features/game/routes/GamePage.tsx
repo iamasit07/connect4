@@ -76,13 +76,19 @@ const GamePage = () => {
 
   useEffect(() => {
     if (gameStatus === "finished" && gameMode === "bot") return;
-    if (connectionStatus === "disconnected" || connectionStatus === "error") {
+    
+    // Initial connection
+    if (connectionStatus === "disconnected") {
       connect();
     }
+  }, [connect, connectionStatus, gameStatus, gameMode]);
+
+  useEffect(() => {
+    // Only disconnect when leaving the page entirely
     return () => {
       disconnect();
     };
-  }, [connect, disconnect, connectionStatus, gameStatus, gameMode]);
+  }, [disconnect]);
 
   // Route Guard: Redirect to active game if trying to access another
   useEffect(() => {

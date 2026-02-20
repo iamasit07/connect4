@@ -1,8 +1,9 @@
 package domain
 
-func CheckWin(board [][]PlayerID, row, column int, player PlayerID) bool{
-	// Only check lines passing through the specific position (row, column)
-	// This is more efficient than scanning the entire board
+func CheckWin(board [][]PlayerID, row, column int, player PlayerID) ([]int, bool) {
+	toIndex := func(r, c int) int {
+		return r*Columns + c
+	}
 
 	// Check horizontal (through this row)
 	count := 0
@@ -10,7 +11,12 @@ func CheckWin(board [][]PlayerID, row, column int, player PlayerID) bool{
 		if board[row][c] == player {
 			count++
 			if count == 4 {
-				return true
+				return []int{
+					toIndex(row, c),
+					toIndex(row, c-1),
+					toIndex(row, c-2),
+					toIndex(row, c-3),
+				}, true
 			}
 		} else {
 			count = 0
@@ -23,7 +29,12 @@ func CheckWin(board [][]PlayerID, row, column int, player PlayerID) bool{
 		if board[r][column] == player {
 			count++
 			if count == 4 {
-				return true
+				return []int{
+					toIndex(r, column),
+					toIndex(r-1, column),
+					toIndex(r-2, column),
+					toIndex(r-3, column),
+				}, true
 			}
 		} else {
 			count = 0
@@ -43,7 +54,12 @@ func CheckWin(board [][]PlayerID, row, column int, player PlayerID) bool{
 		if board[startRow][startCol] == player {
 			count++
 			if count == 4 {
-				return true
+				return []int{
+					toIndex(startRow, startCol),
+					toIndex(startRow-1, startCol-1),
+					toIndex(startRow-2, startCol-2),
+					toIndex(startRow-3, startCol-3),
+				}, true
 			}
 		} else {
 			count = 0
@@ -65,7 +81,12 @@ func CheckWin(board [][]PlayerID, row, column int, player PlayerID) bool{
 		if board[startRow][startCol] == player {
 			count++
 			if count == 4 {
-				return true
+				return []int{
+					toIndex(startRow, startCol),
+					toIndex(startRow+1, startCol-1),
+					toIndex(startRow+2, startCol-2),
+					toIndex(startRow+3, startCol-3),
+				}, true
 			}
 		} else {
 			count = 0
@@ -74,5 +95,5 @@ func CheckWin(board [][]PlayerID, row, column int, player PlayerID) bool{
 		startCol++
 	}
 
-	return false
+	return nil, false
 }

@@ -4,8 +4,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
+	"github.com/iamasit07/connect4/backend/internal/repository/postgres"
+	"github.com/iamasit07/connect4/backend/internal/service/game"
 )
 
 type Worker struct {

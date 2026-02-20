@@ -1,7 +1,7 @@
 package bot
 
 import (
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 
 const (
@@ -130,7 +130,7 @@ func evaluateWinningThreat(board [][]domain.PlayerID, player domain.PlayerID, op
 	// Find all columns where player can win immediately
 	for _, col := range validMoves {
 		testBoard, row, _ := domain.SimulateMove(board, col, player)
-		if domain.CheckWin(testBoard, row, col, player) {
+		if _, won := domain.CheckWin(testBoard, row, col, player); won {
 			winningMoves = append(winningMoves, col)
 		}
 	}
@@ -152,7 +152,7 @@ func evaluateWinningThreat(board [][]domain.PlayerID, player domain.PlayerID, op
 		nextMoves := domain.GetValidMoves(blockBoard)
 		for _, nextCol := range nextMoves {
 			futureBoard, futureRow, _ := domain.SimulateMove(blockBoard, nextCol, player)
-			if domain.CheckWin(futureBoard, futureRow, nextCol, player) {
+			if _, won := domain.CheckWin(futureBoard, futureRow, nextCol, player); won {
 				stillHasThreat = true
 				break
 			}

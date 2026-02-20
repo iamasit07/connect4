@@ -60,7 +60,25 @@ CREATE INDEX IF NOT EXISTS idx_sessions_active ON user_sessions(user_id, is_acti
 CREATE INDEX IF NOT EXISTS idx_sessions_cleanup ON user_sessions(created_at) WHERE is_active = FALSE;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_session ON user_sessions(user_id) WHERE is_active = TRUE;
 
+-- Refresh tokens table for access/refresh token rotation
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id SERIAL PRIMARY KEY,
+    token_id TEXT UNIQUE NOT NULL,
+    user_id INT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    revoked BOOLEAN DEFAULT FALSE
+);
+
+-- Refresh token indexes
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_id ON refresh_tokens(token_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_session_id ON refresh_tokens(session_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_cleanup ON refresh_tokens(created_at) WHERE revoked = TRUE;
+
 -- Enable Row Level Security
 ALTER TABLE players ENABLE ROW LEVEL SECURITY;
 ALTER TABLE game ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;

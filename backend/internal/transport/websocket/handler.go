@@ -12,20 +12,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/iamasit07/4-in-a-row/backend/internal/config"
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
-	"github.com/iamasit07/4-in-a-row/backend/internal/repository/redis"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/matchmaking"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/session"
+	"github.com/iamasit07/connect4/backend/internal/config"
+	"github.com/iamasit07/connect4/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/repository/redis"
+	"github.com/iamasit07/connect4/backend/internal/service/game"
+	"github.com/iamasit07/connect4/backend/internal/service/matchmaking"
+	"github.com/iamasit07/connect4/backend/internal/service/session"
 )
 
 const (
 	maxMessageSize = 4096
-	maxConnsPerIP = 5
-	writeTimeout = 10 * time.Second
-	pongWait = 60 * time.Second
-	pingInterval = 20 * time.Second
+	maxConnsPerIP  = 5
+	writeTimeout   = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingInterval   = 20 * time.Second
 )
 
 type ipConnTracker struct {
@@ -67,19 +67,23 @@ type Handler struct {
 	AuthService    *session.AuthService
 	Upgrader       websocket.Upgrader
 	ipTracker      *ipConnTracker
+	
+	gameLoops   map[string]bool 
+	gameLoopsMu sync.Mutex
 }
 
 // NewHandler creates a new WebSocket handler with dependencies
 func NewHandler(cm *ConnectionManager, mq *matchmaking.MatchmakingQueue, sm *game.SessionManager, gs *game.Service, as *session.AuthService) *Handler {
 	allowedOrigins := config.AppConfig.AllowedOrigins
 
-	return &Handler{
+	h := &Handler{
 		ConnManager:    cm,
 		Matchmaking:    mq,
 		SessionManager: sm,
 		GameService:    gs,
 		AuthService:    as,
 		ipTracker:      newIPConnTracker(),
+		gameLoops:      make(map[string]bool),
 		Upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				origin := r.Header.Get("Origin")
@@ -98,13 +102,64 @@ func NewHandler(cm *ConnectionManager, mq *matchmaking.MatchmakingQueue, sm *gam
 			WriteBufferSize: 1024,
 		},
 	}
+	
+	sm.SetSessionCreatedCallback(h.EnsureEventLoopRunning)
+	
+	return h
+}
+
+// EnsureEventLoopRunning checks if an event loop is running for the game session, and starts one if not
+func (h *Handler) EnsureEventLoopRunning(gs *game.GameSession) {
+	h.gameLoopsMu.Lock()
+	defer h.gameLoopsMu.Unlock()
+	
+	if h.gameLoops[gs.GameID] {
+		return
+	}
+	
+	h.gameLoops[gs.GameID] = true
+	go h.ConsumeGameEvents(gs)
+}
+
+// ConsumeGameEvents listens to the decoupled game event channel and broadcasts to users
+func (h *Handler) ConsumeGameEvents(gs *game.GameSession) {
+	defer func() {
+		h.gameLoopsMu.Lock()
+		delete(h.gameLoops, gs.GameID)
+		h.gameLoopsMu.Unlock()
+		log.Printf("[WS] Event loop stopped for game %s", gs.GameID)
+	}()
+
+	log.Printf("[WS] Event loop started for game %s", gs.GameID)
+
+	for {
+		select {
+		case event, ok := <-gs.Events:
+			if !ok {
+				log.Printf("[WS] Events channel closed for game %s", gs.GameID)
+				return
+			}
+			msg, ok := event.Payload.(domain.ServerMessage)
+			if !ok {
+				log.Printf("[WS] Unknown event payload type for game %s", gs.GameID)
+				continue
+			}
+
+			for _, recipientID := range event.Recipients {
+				go func(uid int64, m domain.ServerMessage) {
+					h.ConnManager.SendMessage(uid, m)
+				}(recipientID, msg)
+			}
+		case <-gs.Ctx.Done():
+			log.Printf("[WS] Game context cancelled for game %s", gs.GameID)
+			return
+		}
+	}
 }
 
 // extractIP returns the client IP address from the request.
 func extractIP(r *http.Request) string {
-	// Trust X-Forwarded-For if behind a reverse proxy
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first (client) IP
 		for i := 0; i < len(xff); i++ {
 			if xff[i] == ',' {
 				return xff[:i]
@@ -121,7 +176,6 @@ func extractIP(r *http.Request) string {
 
 // HandleWebSocket is the Gin handler that upgrades the connection
 func (h *Handler) HandleWebSocket(c *gin.Context) {
-	// Connection Exhaustion: enforce per-IP connection limit
 	clientIP := extractIP(c.Request)
 	if !h.ipTracker.Increment(clientIP) {
 		log.Printf("[WS] Connection limit exceeded for IP: %s", clientIP)
@@ -136,7 +190,6 @@ func (h *Handler) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	// Memory DoS: enforce maximum incoming message size (4KB)
 	conn.SetReadLimit(maxMessageSize)
 
 	h.handleConnection(conn, clientIP)
@@ -207,7 +260,10 @@ func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
 		h.ConnManager.AddConnection(userID, conn, username)
 
 		if session, exists := h.SessionManager.GetSessionByUserID(userID); exists {
-			if err := session.HandleReconnect(userID, h.ConnManager); err != nil {
+			// Ensure event loop is running for this session
+			h.EnsureEventLoopRunning(session)
+			
+			if err := session.HandleReconnect(userID); err != nil {
 				log.Printf("[WS] Reconnect failed for user %d: %v", userID, err)
 			}
 		}
@@ -224,7 +280,7 @@ func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
 		if h.ConnManager.IsCurrentConnection(userID, conn) {
 			gameSession, exists := h.SessionManager.GetSessionByUserID(userID)
 			if exists {
-				gameSession.HandleDisconnect(userID, h.ConnManager, h.SessionManager)
+				gameSession.HandleDisconnect(userID, h.SessionManager)
 			}
 		}
 
@@ -233,9 +289,6 @@ func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
 
 		h.ConnManager.RemoveConnectionIfMatching(userID, conn)
 	}()
-
-	lastSessionCheck := time.Now()
-	const sessionCheckInterval = 30 * time.Second
 
 	// 3. Main Message Loop
 	for {
@@ -253,61 +306,26 @@ func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
 			continue
 		}
 
-		// --- STRICT PER-MESSAGE SESSION VALIDATION ---
-		// Security: Ensure only the currently active session can send messages.
-		// If a new device logs in, old connections will be disconnected on next message.
+		// --- STRICT PER-MESSAGE SESSION VALIDATION (OPTIMIZED) ---
+		// Use Offline Validation (Signature + Blocklist) to avoid DB hits
 		if msg.JWT != "" {
-			claims, err := h.AuthService.ValidateToken(msg.JWT)
+			claims, err := h.AuthService.ValidateTokenOffline(msg.JWT)
 			if err != nil {
-				log.Printf("[WS] Invalid token for user %d: %v", userID, err)
-				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session invalidated"})
+				log.Printf("[WS] Session revoked for user %d: %v", userID, err)
+				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session invalidated/replaced"})
 				return // Break loop and disconnect
 			}
-			// Update context if user somehow changed (unlikely but safe)
-			if claims.UserID != userID {
-				log.Printf("[WS] User mismatch: expected %d, got %d", userID, claims.UserID)
-				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "User mismatch"})
+			// Sanity check
+			if claims.UserID != userID || claims.SessionID != sessionID {
+				log.Printf("[WS] Session mismatch or user spoofing attempt: %d vs %d", userID, claims.UserID)
 				return
 			}
-			sessionID = claims.SessionID
 		} else {
-			// Debounce session check to avoid DB hammering and race conditions
-			if time.Since(lastSessionCheck) > sessionCheckInterval {
-				lastSessionCheck = time.Now()
-
-				// Verify the session is still the active one in DB
-				// This catches if user logged in from another device
-				sess, err := h.AuthService.GetSession(sessionID)
-				if err != nil {
-					log.Printf("[WS] Session lookup error for sessionID=%s, userID=%d: %v", sessionID, userID, err)
-					// Don't kill connection immediately on db error, just log
-				} else if sess == nil {
-					log.Printf("[WS] Session not found: sessionID=%s, userID=%d", sessionID, userID)
-					h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session not found"})
-					return
-				} else if !sess.IsActive {
-					log.Printf("[WS] Session inactive: sessionID=%s, userID=%d, IsActive=%v", sessionID, userID, sess.IsActive)
-					h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session expired or logged out"})
-					return
-				}
-
-				// Additional check: Verify this session is still the user's active session
-				activeSession, err := h.AuthService.GetActiveSession(userID)
-				if err != nil {
-					log.Printf("[WS] Active session lookup error for userID=%d: %v", userID, err)
-				} else if activeSession == nil {
-					log.Printf("[WS] No active session found for userID=%d", userID)
-					h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "No active session"})
-					return
-				} else if activeSession.SessionID != sessionID {
-					log.Printf("[WS] Session mismatch: current=%s, active=%s, userID=%d - User logged in from another device",
-						sessionID, activeSession.SessionID, userID)
-					
-					// Graceful close instead of abrupt disconnect
-					conn.WriteJSON(domain.ServerMessage{Type: "error", Message: "Logged in from another device"})
-					conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "session replaced"))
-					return
-				}
+			
+			if h.AuthService.IsSessionBlocked(sessionID) {
+				log.Printf("[WS] Session blocked (Redis check): %s", sessionID)
+				h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Session invalidated/replaced"})
+				return
 			}
 		}
 
@@ -340,8 +358,7 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 		}
 
 		// Clean up any existing game session before joining queue
-		// If game is active, it's abandoned. If finished (rematch window), it's cleaned up.
-		h.SessionManager.ForceCleanupForUser(userID, h.ConnManager)
+		h.SessionManager.ForceCleanupForUser(userID)
 
 		username, _ := h.ConnManager.GetUsername(userID)
 		err := h.Matchmaking.AddPlayerToQueue(userID, username, difficulty)
@@ -361,8 +378,10 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Game not found"})
 			return
 		}
+		
+		h.EnsureEventLoopRunning(gameSession)
 
-		err := gameSession.HandleMove(userID, msg.Column, h.ConnManager)
+		err := gameSession.HandleMove(userID, msg.Column)
 		if err != nil {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: err.Error()})
 		}
@@ -373,8 +392,9 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Game not found"})
 			return
 		}
-		// Pass SessionManager to handle rematch logic (creating new game)
-		err := gameSession.HandleRematchRequest(userID, h.ConnManager, h.SessionManager)
+		h.EnsureEventLoopRunning(gameSession)
+		
+		err := gameSession.HandleRematchRequest(userID, h.SessionManager)
 		if err != nil {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: err.Error()})
 		}
@@ -385,7 +405,10 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: "Game not found"})
 			return
 		}
-		err := gameSession.HandleRematchResponse(userID, msg.RematchResponse, h.ConnManager, h.SessionManager)
+		h.EnsureEventLoopRunning(gameSession)
+		
+		accept := msg.RematchResponse == "accept"
+		err := gameSession.HandleRematchResponse(userID, accept, h.SessionManager)
 		if err != nil {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{Type: "error", Message: err.Error()})
 		}
@@ -395,7 +418,9 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 		if !exists {
 			return
 		}
-		gameSession.TerminateSessionWithReason(userID, h.ConnManager, "surrender")
+		h.EnsureEventLoopRunning(gameSession)
+		
+		gameSession.TerminateSessionWithReason(userID, "surrender")
 
 	case "watch_game":
 		gameSession, exists := h.SessionManager.GetSessionByGameID(msg.GameID)
@@ -404,12 +429,12 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 			return
 		}
 
-		// Ensure the user isn't already playing in this game
 		if gameSession.Player1ID == userID || (gameSession.Player2ID != nil && *gameSession.Player2ID == userID) {
 			return
 		}
 
-		gameSession.AddSpectator(userID, h.ConnManager)
+		h.EnsureEventLoopRunning(gameSession)
+		gameSession.AddSpectator(userID)
 
 	case "leave_spectate":
 		if gameSession, exists := h.SessionManager.GetSessionByGameID(msg.GameID); exists {
@@ -418,7 +443,8 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 
 	case "get_game_state":
 		if gameSession, exists := h.SessionManager.GetSessionByUserID(userID); exists {
-			gameSession.HandleGetState(userID, h.ConnManager)
+			h.EnsureEventLoopRunning(gameSession)
+			gameSession.HandleGetState(userID)
 		} else {
 			h.ConnManager.SendMessage(userID, domain.ServerMessage{
 				Type:    "no_active_game",

@@ -9,7 +9,9 @@ interface DiskProps {
 }
 
 export const Disk = ({ player, isWinning = false, isNew = false, row = 0 }: DiskProps) => {
-  const isRed = player === 1;
+  // Ensure player is treated as a number to handle potential string values
+  const playerNum = Number(player);
+  const isRed = playerNum === 1;
   
   // Calculate animation distance based on row position
   const dropDistance = -((row + 1) * 100);
@@ -39,8 +41,9 @@ export const Disk = ({ player, isWinning = false, isNew = false, row = 0 }: Disk
           ? 'inset 0 4px 8px rgba(255,255,255,0.25), inset 0 -4px 8px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.3)'
           : 'inset 0 4px 8px rgba(255,255,255,0.35), inset 0 -4px 8px rgba(0,0,0,0.25), 0 2px 6px rgba(0,0,0,0.3)',
       }}
+      title={`Player ${playerNum}`}
+      data-player={playerNum}
     >
-      {/* Flat disk ring effect - outer ring */}
       <div 
         className={cn(
           'absolute inset-[8%] rounded-full',

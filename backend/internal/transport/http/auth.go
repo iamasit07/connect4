@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/session"
-	"github.com/iamasit07/4-in-a-row/backend/pkg/auth"
-	"github.com/iamasit07/4-in-a-row/backend/pkg/httputil"
-	"github.com/iamasit07/4-in-a-row/backend/pkg/useragent"
+	"github.com/iamasit07/connect4/backend/internal/repository/postgres"
+	"github.com/iamasit07/connect4/backend/internal/service/game"
+	"github.com/iamasit07/connect4/backend/internal/service/session"
+	"github.com/iamasit07/connect4/backend/pkg/auth"
+	"github.com/iamasit07/connect4/backend/pkg/httputil"
+	"github.com/iamasit07/connect4/backend/pkg/useragent"
 )
 
 // safeInputPattern allows only alphanumeric characters, spaces, hyphens, underscores, and dots.
@@ -41,11 +41,11 @@ type AuthHandler struct {
 	SessionRepo    *postgres.SessionRepo
 	ConnManager    Disconnector
 	Cache          session.CacheRepository
-	AuthService    SessionInvalidator
+	AuthService    *session.AuthService
 	SessionManager *game.SessionManager
 }
 
-func NewAuthHandler(userRepo *postgres.UserRepo, sessionRepo *postgres.SessionRepo, cm Disconnector, cache session.CacheRepository, authSvc SessionInvalidator, sm *game.SessionManager) *AuthHandler {
+func NewAuthHandler(userRepo *postgres.UserRepo, sessionRepo *postgres.SessionRepo, cm Disconnector, cache session.CacheRepository, authSvc *session.AuthService, sm *game.SessionManager) *AuthHandler {
 	return &AuthHandler{
 		UserRepo:       userRepo,
 		SessionRepo:    sessionRepo,
@@ -96,8 +96,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	if len(req.Password) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 6 characters"})
+	// Validate password strength
+	if err := auth.ValidatePasswordStrength(req.Password); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -137,15 +138,16 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	token, err := auth.GenerateJWT(userID, req.Username, sessionID)
+	// Generate token pair (access + refresh)
+	accessToken, refreshToken, err := h.AuthService.GenerateTokenPair(userID, req.Username, sessionID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
 
-	httputil.SetAuthCookie(c.Writer, token)
+	httputil.SetTokenPairCookies(c.Writer, accessToken, refreshToken)
 	c.JSON(http.StatusCreated, gin.H{
-		"token": token,
+		"token": accessToken,
 		"user": gin.H{
 			"id":         userID,
 			"username":   req.Username,
@@ -182,11 +184,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Deactivate old sessions
+	// Deactivate old sessions and revoke old refresh tokens
 	err = h.SessionRepo.DeactivateAllUserSessions(user.ID)
 	if err != nil {
 		// Log error but proceed
 	}
+
+	h.AuthService.RevokeAllUserRefreshTokens(user.ID)
 
 	if h.ConnManager != nil {
 		h.ConnManager.DisconnectUser(user.ID, "Logged in from another device")
@@ -203,15 +207,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := auth.GenerateJWT(user.ID, user.Username, sessionID)
+	// Generate token pair (access + refresh)
+	accessToken, refreshToken, err := h.AuthService.GenerateTokenPair(user.ID, user.Username, sessionID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
 
-	httputil.SetAuthCookie(c.Writer, token)
+	httputil.SetTokenPairCookies(c.Writer, accessToken, refreshToken)
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
+		"token": accessToken,
 		"user":  user.UserResponse(),
 	})
 }
@@ -227,8 +232,49 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		}
 	}
 
-	httputil.ClearAuthCookie(c.Writer)
+	// Revoke refresh token if present
+	refreshTokenStr, err := httputil.GetRefreshTokenFromCookie(c.Request)
+	if err == nil && refreshTokenStr != "" {
+		claims, err := auth.ValidateRefreshToken(refreshTokenStr)
+		if err == nil {
+			h.AuthService.RevokeRefreshToken(claims.TokenID)
+		}
+	}
+
+	httputil.ClearAllAuthCookies(c.Writer)
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out"})
+}
+
+// RefreshToken handles the token refresh endpoint
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
+	refreshTokenStr, err := httputil.GetRefreshTokenFromCookie(c.Request)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No refresh token"})
+		return
+	}
+
+	// Validate and rotate refresh token, generating new access + refresh tokens
+	newAccessToken, newRefreshToken, _, err := h.AuthService.ValidateAndRefreshWithUsername(
+		refreshTokenStr,
+		func(userID int64) (string, error) {
+			user, err := h.UserRepo.GetUserByID(userID)
+			if err != nil || user == nil {
+				return "", fmt.Errorf("user not found")
+			}
+			return user.Username, nil
+		},
+	)
+	if err != nil {
+		log.Printf("[AUTH] Refresh token validation failed: %v", err)
+		httputil.ClearAllAuthCookies(c.Writer)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+		return
+	}
+
+	httputil.SetTokenPairCookies(c.Writer, newAccessToken, newRefreshToken)
+	c.JSON(http.StatusOK, gin.H{
+		"token": newAccessToken,
+	})
 }
 
 func (h *AuthHandler) Me(c *gin.Context) {
@@ -286,14 +332,10 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	// 6. Inject Active Game ID (Dynamic, not cached)
 	if h.SessionManager != nil {
 		if sess, exists := h.SessionManager.GetSessionByUserID(userID); exists {
-			// Only return if game is NOT finished (or is in rematch window)
+			// Only return if game is NOT finished
 			if !sess.Game.IsFinished() {
 				response["activeGameId"] = sess.GameID
 			}
-			// Note: If game is finished but pending rematch, we might still want to return it?
-			// For now, only return if strictly active or we want them to see the result/rematch UI.
-			// Let's return it even if finished, so they can see "Game Over" screen.
-			response["activeGameId"] = sess.GameID
 		}
 	}
 

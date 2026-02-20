@@ -12,17 +12,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iamasit07/4-in-a-row/backend/internal/config"
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
-	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
-	"github.com/iamasit07/4-in-a-row/backend/internal/repository/redis"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/cleanup"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/game"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/matchmaking"
-	"github.com/iamasit07/4-in-a-row/backend/internal/service/session"
-	transportHttp "github.com/iamasit07/4-in-a-row/backend/internal/transport/http"
-	"github.com/iamasit07/4-in-a-row/backend/internal/transport/http/middleware"
-	"github.com/iamasit07/4-in-a-row/backend/internal/transport/websocket"
+	"github.com/iamasit07/connect4/backend/internal/config"
+	"github.com/iamasit07/connect4/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/repository/postgres"
+	"github.com/iamasit07/connect4/backend/internal/repository/redis"
+	"github.com/iamasit07/connect4/backend/internal/service/cleanup"
+	"github.com/iamasit07/connect4/backend/internal/service/game"
+	"github.com/iamasit07/connect4/backend/internal/service/matchmaking"
+	"github.com/iamasit07/connect4/backend/internal/service/session"
+	transportHttp "github.com/iamasit07/connect4/backend/internal/transport/http"
+	"github.com/iamasit07/connect4/backend/internal/transport/http/middleware"
+	"github.com/iamasit07/connect4/backend/internal/transport/websocket"
 	"github.com/joho/godotenv"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -92,12 +92,12 @@ func main() {
 	cleanupWorker := cleanup.NewWorker(sessionManager, sessionRepo)
 	go cleanupWorker.Start()
 
-	go matchmaking.MatchMakingListener(matchmakingQueue, connManager, sessionManager)
+	go matchmaking.MatchMakingListener(matchmakingQueue, sessionManager)
 
 	// 6. Initialize HTTP Handlers (API Layer)
 	authHandler := transportHttp.NewAuthHandler(userRepo, sessionRepo, connManager, cache, authService, sessionManager)
 	historyHandler := transportHttp.NewHistoryHandler(gameRepo)
-	oauthHandler := transportHttp.NewOAuthHandler(userRepo, sessionRepo, &cfg.OAuthConfig, connManager)
+	oauthHandler := transportHttp.NewOAuthHandler(userRepo, sessionRepo, &cfg.OAuthConfig, connManager, authService)
 	wsHandler := websocket.NewHandler(connManager, matchmakingQueue, sessionManager, gameService, authService)
 	watchHandler := transportHttp.NewWatchHandler(sessionManager)
 
@@ -113,6 +113,7 @@ func main() {
 	// Public Auth Routes
 	router.POST("/api/auth/register", authHandler.Register)
 	router.POST("/api/auth/login", authHandler.Login)
+	router.POST("/api/auth/refresh", authHandler.RefreshToken)
 	router.GET("/api/leaderboard", authHandler.Leaderboard)
 
 	// OAuth Routes (public)

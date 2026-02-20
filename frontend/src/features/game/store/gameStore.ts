@@ -67,6 +67,7 @@ interface GameStore {
     myPlayer: PlayerNumber;
     opponent: string;
     turnTimeLimit?: number;
+    disconnectTimeout?: number;
   }) => void;
   updateGameState: (data: {
     board: Board;
@@ -185,6 +186,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
     myPlayer,
     opponent,
     turnTimeLimit,
+    disconnectTimeout,
+  }: {
+    gameId: string;
+    board: Board;
+    currentTurn: PlayerNumber;
+    myPlayer: PlayerNumber;
+    opponent: string;
+    turnTimeLimit?: number;
+    disconnectTimeout?: number;
   }) =>
     set({
       gameId,
@@ -203,8 +213,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       spectatorPlayer1: null,
       spectatorPlayer2: null,
       rematchStatus: "idle",
-      isOpponentDisconnected: false,
-      disconnectTimer: 0,
+      isOpponentDisconnected: (disconnectTimeout !== undefined && disconnectTimeout > 0),
+      disconnectTimer: disconnectTimeout || 0,
     }),
 
   updateGameState: ({ board, currentTurn, lastMove, timeLeft }) =>

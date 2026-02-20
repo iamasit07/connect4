@@ -3,7 +3,7 @@ package bot
 import (
 	"math/rand"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 func CalculateBestMoveEasy(board [][]domain.PlayerID, botPlayer domain.PlayerID) int {
 	validColumns := domain.GetValidMoves(board)
@@ -15,14 +15,15 @@ func CalculateBestMoveEasy(board [][]domain.PlayerID, botPlayer domain.PlayerID)
 
 	for _, col := range validColumns {
 		testBoard, row, _ := domain.SimulateMove(board, col, botPlayer)
-		if domain.CheckWin(testBoard, row, col, botPlayer) {
+		_, won := domain.CheckWin(testBoard, row, col, botPlayer)
+			if won {
 			return col
 		}
 	}
 
 	for _, col := range validColumns {
 		testBoard, row, _ := domain.SimulateMove(board, col, opponent)
-		if domain.CheckWin(testBoard, row, col, opponent) {
+		if _, won := domain.CheckWin(testBoard, row, col, opponent); won {
 			return col
 		}
 	}

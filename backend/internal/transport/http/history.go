@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
+	"github.com/iamasit07/connect4/backend/internal/repository/postgres"
 )
 
 type HistoryHandler struct {

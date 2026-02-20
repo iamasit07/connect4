@@ -168,6 +168,12 @@ export interface GameStateMessage {
     player: number;
   };
   timeLeft?: number;
+  disconnectTimeout?: number;
+  winner?: string;
+  reason?: string;
+  winningCells?: { row: number; col: number }[];
+  allowRematch?: boolean;
+  rematchRequester?: string;
 }
 
 export interface MoveMadeMessage {

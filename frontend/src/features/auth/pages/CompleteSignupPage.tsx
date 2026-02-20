@@ -8,11 +8,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '../hooks/useAuth';
+import { PasswordStrength } from '../components/PasswordStrength';
 import { toast } from 'sonner';
 
 const step2Schema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(50, 'Username must be at most 50 characters'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least 1 uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least 1 lowercase letter')
+    .regex(/\d/, 'Password must contain at least 1 digit')
+    .regex(/[^a-zA-Z0-9]/, 'Password must contain at least 1 special character'),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Passwords do not match',
@@ -125,7 +131,6 @@ const CompleteSignupPage = () => {
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     className={errors.password ? 'border-destructive pr-10' : 'pr-10'}
-                    minLength={6}
                   />
                   <Button
                     type="button"
@@ -137,6 +142,7 @@ const CompleteSignupPage = () => {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
+                <PasswordStrength password={formData.password} />
                 {errors.password && (
                   <p className="text-sm text-destructive">{errors.password}</p>
                 )}

@@ -26,6 +26,10 @@ type ServerMessage struct {
 	NextTurn         int          `json:"nextTurn,omitempty"` // 1 or 2
 	Winner           string       `json:"winner,omitempty"`   // username or "draw"
 	Reason           string       `json:"reason,omitempty"`
+	WinningCells     []struct {
+		Row int `json:"row"`
+		Col int `json:"col"`
+	} `json:"winningCells,omitempty"`
 	TimeRemaining    int          `json:"timeRemaining,omitempty"`
 	RematchRequester string       `json:"rematchRequester,omitempty"` // username who requested rematch
 	RematchTimeout   int          `json:"rematchTimeout,omitempty"`   // seconds remaining to respond

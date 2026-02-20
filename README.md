@@ -63,7 +63,7 @@ Connect 4 is a full-stack, real-time multiplayer web game where two players take
 ## 📁 Project Structure
 
 ```
-4-in-a-row/
+connect4/
 ├── backend/
 │   ├── cmd/api/                  # Application entrypoint
 │   │   └── main.go
@@ -115,8 +115,8 @@ Connect 4 is a full-stack, real-time multiplayer web game where two players take
 ### Option 1: Docker (Recommended)
 
 ```bash
-git clone https://github.com/iamasit07/4-in-a-row.git
-cd 4-in-a-row
+git clone https://github.com/iamasit07/connect4.git
+cd connect4
 
 # Copy and configure environment variables
 cp .env.example .env  # Edit with your database URL, JWT secret, etc.

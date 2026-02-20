@@ -3,7 +3,7 @@ package bot
 import (
 	"math"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 
 func calculateMediumMove(board [][]domain.PlayerID, botPlayer domain.PlayerID) int {
@@ -46,7 +46,7 @@ func calculateMediumMove(board [][]domain.PlayerID, botPlayer domain.PlayerID) i
 	// === PHASE 1: Check for immediate wins (highest priority) ===
 	for _, col := range validColumns {
 		sim := botSimulations[col]
-		if domain.CheckWin(sim.board, sim.row, col, botPlayer) {
+		if _, won := domain.CheckWin(sim.board, sim.row, col, botPlayer); won {
 			scores[col] += SCORE_WIN_NOW
 		}
 	}
@@ -54,7 +54,7 @@ func calculateMediumMove(board [][]domain.PlayerID, botPlayer domain.PlayerID) i
 	// === PHASE 2: Block opponent's immediate wins ===
 	for _, col := range validColumns {
 		sim := oppSimulations[col]
-		if domain.CheckWin(sim.board, sim.row, col, opponent) {
+		if _, won := domain.CheckWin(sim.board, sim.row, col, opponent); won {
 			scores[col] += SCORE_BLOCK_WIN
 		}
 	}

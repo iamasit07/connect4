@@ -2,9 +2,10 @@ package websocket
 
 import (
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 
 // ConnectionManager handles active WebSocket connections thread-safely
@@ -97,7 +98,7 @@ func (cm *ConnectionManager) SendMessage(userID int64, message domain.ServerMess
 	mu.Lock()
 	defer mu.Unlock()
 
-	// 3. Safe write
+	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	return conn.WriteJSON(message)
 }
 

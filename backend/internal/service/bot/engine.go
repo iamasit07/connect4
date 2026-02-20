@@ -1,7 +1,7 @@
 package bot
 
 import (
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 
 // CalculateBestMove selects the best move based on difficulty

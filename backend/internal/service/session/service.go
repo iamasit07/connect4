@@ -8,11 +8,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
-	"github.com/iamasit07/4-in-a-row/backend/pkg/auth"
+	"github.com/iamasit07/connect4/backend/internal/config"
+	"github.com/iamasit07/connect4/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/pkg/auth"
 )
 
 const sessionKeyPrefix = "session:"
+const refreshTokenKeyPrefix = "refresh_token:"
+const blockedSessionKeyPrefix = "blocked_session:"
 const sessionTTL = 30 * 24 * time.Hour // 30 days
 
 type SessionRepository interface {
@@ -23,6 +26,11 @@ type SessionRepository interface {
 	DeactivateSession(sessionID string) error
 	UpdateSessionActivity(sessionID string) error
 	GetUserSessionHistory(userID int64, limit int) ([]domain.UserSession, error)
+	// Refresh token methods
+	StoreRefreshToken(tokenID string, userID int64, sessionID string, expiresAt time.Time) error
+	GetRefreshToken(tokenID string) (*domain.RefreshToken, error)
+	RevokeRefreshToken(tokenID string) error
+	RevokeAllUserRefreshTokens(userID int64) error
 }
 
 type CacheRepository interface {
@@ -44,9 +52,200 @@ func NewAuthService(repo SessionRepository, cache CacheRepository) *AuthService 
 	}
 }
 
-// SetSession stores session in database and cache
+// BlocklistSession adds a session ID to the Redis blocklist with a TTL.
+func (s *AuthService) BlocklistSession(sessionID string, ttl time.Duration) error {
+	if s.cache == nil {
+		return nil
+	}
+	ctx := context.Background()
+	key := blockedSessionKeyPrefix + sessionID
+	return s.cache.Set(ctx, key, "1", ttl)
+}
+
+// IsSessionBlocked checks if a session ID is in the blocklist.
+func (s *AuthService) IsSessionBlocked(sessionID string) bool {
+	if s.cache == nil {
+		return false
+	}
+	ctx := context.Background()
+	key := blockedSessionKeyPrefix + sessionID
+	val, err := s.cache.Get(ctx, key)
+	return err == nil && val != ""
+}
+
+// ValidateTokenOffline validates a JWT using only signature + blocklist.
+func (s *AuthService) ValidateTokenOffline(tokenString string) (*auth.Claims, error) {
+	claims, err := auth.ValidateJWT(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	if s.IsSessionBlocked(claims.SessionID) {
+		return nil, errors.New("session is blocked/revoked")
+	}
+	return claims, nil
+}
+
+func (s *AuthService) GenerateTokenPair(userID int64, username, sessionID string) (accessToken, refreshToken string, err error) {
+	accessToken, err = auth.GenerateAccessToken(userID, username, sessionID)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate access token: %v", err)
+	}
+
+	tokenID := auth.GenerateToken()
+
+	refreshToken, err = auth.GenerateRefreshToken(userID, sessionID, tokenID)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate refresh token: %v", err)
+	}
+
+	refreshTTL := time.Duration(config.AppConfig.RefreshTokenTTLDays) * 24 * time.Hour
+	expiresAt := time.Now().Add(refreshTTL)
+
+	if err := s.repo.StoreRefreshToken(tokenID, userID, sessionID, expiresAt); err != nil {
+		return "", "", fmt.Errorf("failed to store refresh token: %v", err)
+	}
+
+	if s.cache != nil {
+		ctx := context.Background()
+		key := refreshTokenKeyPrefix + tokenID
+		rtData := &domain.RefreshToken{
+			TokenID:   tokenID,
+			UserID:    userID,
+			SessionID: sessionID,
+			ExpiresAt: expiresAt,
+			CreatedAt: time.Now(),
+			Revoked:   false,
+		}
+		data, err := json.Marshal(rtData)
+		if err == nil {
+			if cacheErr := s.cache.Set(ctx, key, data, refreshTTL); cacheErr != nil {
+				log.Printf("[SESSION] Warning: Failed to cache refresh token: %v", cacheErr)
+			}
+		}
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func (s *AuthService) ValidateAndRefresh(refreshTokenString string) (newAccessToken, newRefreshToken string, err error) {
+	claims, err := auth.ValidateRefreshToken(refreshTokenString)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid refresh token: %v", err)
+	}
+
+	rt, err := s.getRefreshTokenMetadata(claims.TokenID)
+	if err != nil {
+		return "", "", fmt.Errorf("refresh token lookup failed: %v", err)
+	}
+	if rt == nil {
+		return "", "", errors.New("refresh token not found")
+	}
+	if rt.Revoked {
+		return "", "", errors.New("refresh token has been revoked")
+	}
+	if time.Now().After(rt.ExpiresAt) {
+		return "", "", errors.New("refresh token has expired")
+	}
+
+	session, err := s.GetSession(claims.SessionID)
+	if err != nil {
+		return "", "", fmt.Errorf("session validation failed: %v", err)
+	}
+	if session == nil || !session.IsActive {
+		return "", "", errors.New("session invalidated")
+	}
+
+	if err := s.RevokeRefreshToken(claims.TokenID); err != nil {
+		log.Printf("[SESSION] Warning: Failed to revoke old refresh token: %v", err)
+	}
+
+	newAccessToken, newRefreshToken, err = s.GenerateTokenPair(rt.UserID, "", claims.SessionID)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate new token pair: %v", err)
+	}
+
+	return newAccessToken, newRefreshToken, nil
+}
+
+func (s *AuthService) ValidateAndRefreshWithUsername(refreshTokenString string, getUsername func(int64) (string, error)) (newAccessToken, newRefreshToken string, userID int64, err error) {
+	claims, err := auth.ValidateRefreshToken(refreshTokenString)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("invalid refresh token: %v", err)
+	}
+
+	rt, err := s.getRefreshTokenMetadata(claims.TokenID)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("refresh token lookup failed: %v", err)
+	}
+	if rt == nil {
+		return "", "", 0, errors.New("refresh token not found")
+	}
+	if rt.Revoked {
+		return "", "", 0, errors.New("refresh token has been revoked")
+	}
+	if time.Now().After(rt.ExpiresAt) {
+		return "", "", 0, errors.New("refresh token has expired")
+	}
+
+	session, err := s.GetSession(claims.SessionID)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("session validation failed: %v", err)
+	}
+	if session == nil || !session.IsActive {
+		return "", "", 0, errors.New("session invalidated")
+	}
+
+	username, err := getUsername(rt.UserID)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("failed to get username: %v", err)
+	}
+
+	if err := s.RevokeRefreshToken(claims.TokenID); err != nil {
+		log.Printf("[SESSION] Warning: Failed to revoke old refresh token: %v", err)
+	}
+
+	newAccessToken, newRefreshToken, err = s.GenerateTokenPair(rt.UserID, username, claims.SessionID)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("failed to generate new token pair: %v", err)
+	}
+
+	return newAccessToken, newRefreshToken, rt.UserID, nil
+}
+
+func (s *AuthService) getRefreshTokenMetadata(tokenID string) (*domain.RefreshToken, error) {
+	if s.cache != nil {
+		ctx := context.Background()
+		key := refreshTokenKeyPrefix + tokenID
+		data, err := s.cache.Get(ctx, key)
+		if err == nil && data != "" {
+			var rt domain.RefreshToken
+			if err := json.Unmarshal([]byte(data), &rt); err == nil {
+				return &rt, nil
+			}
+		}
+	}
+	return s.repo.GetRefreshToken(tokenID)
+}
+
+func (s *AuthService) RevokeRefreshToken(tokenID string) error {
+	if err := s.repo.RevokeRefreshToken(tokenID); err != nil {
+		return err
+	}
+	if s.cache != nil {
+		ctx := context.Background()
+		key := refreshTokenKeyPrefix + tokenID
+		if err := s.cache.Del(ctx, key); err != nil {
+			log.Printf("[SESSION] Warning: Failed to delete refresh token from cache: %v", err)
+		}
+	}
+	return nil
+}
+
+func (s *AuthService) RevokeAllUserRefreshTokens(userID int64) error {
+	return s.repo.RevokeAllUserRefreshTokens(userID)
+}
+
 func (s *AuthService) SetSession(session *domain.UserSession) error {
-	// Always store in database
 	err := s.repo.CreateSession(
 		session.UserID,
 		session.SessionID,
@@ -57,139 +256,103 @@ func (s *AuthService) SetSession(session *domain.UserSession) error {
 	if err != nil {
 		return fmt.Errorf("failed to store session in database: %v", err)
 	}
-
-	// Try to store in cache if available
 	if s.cache != nil {
 		err = s.setSessionInCache(session)
 		if err != nil {
 			log.Printf("[SESSION] Warning: Failed to store session in cache: %v", err)
 		}
 	}
-
 	return nil
 }
 
-// setSessionInCache stores session in cache with TTL
 func (s *AuthService) setSessionInCache(session *domain.UserSession) error {
 	ctx := context.Background()
 	key := sessionKeyPrefix + session.SessionID
-
 	sessionData, err := json.Marshal(session)
 	if err != nil {
 		return err
 	}
-
 	return s.cache.Set(ctx, key, sessionData, sessionTTL)
 }
 
-// GetSession retrieves session from cache first, falls back to database
 func (s *AuthService) GetSession(sessionID string) (*domain.UserSession, error) {
-	// Try cache first
 	if s.cache != nil {
 		session, err := s.getSessionFromCache(sessionID)
 		if err == nil && session != nil {
 			return session, nil
 		}
 	}
-
-	// Fall back to database
 	session, err := s.repo.GetSessionByID(sessionID)
 	if err != nil {
 		return nil, err
 	}
-
-	// If found in DB and cache is enabled, populate cache
 	if session != nil && s.cache != nil {
 		err = s.setSessionInCache(session)
 		if err != nil {
 			log.Printf("[SESSION] Warning: Failed to populate cache: %v", err)
 		}
 	}
-
 	return session, nil
 }
 
-// GetActiveSession retrieves the currently active session for a user
 func (s *AuthService) GetActiveSession(userID int64) (*domain.UserSession, error) {
 	return s.repo.GetActiveSessionByUserID(userID)
 }
 
-// getSessionFromCache retrieves session from cache
 func (s *AuthService) getSessionFromCache(sessionID string) (*domain.UserSession, error) {
 	ctx := context.Background()
 	key := sessionKeyPrefix + sessionID
-
 	data, err := s.cache.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-
 	var session domain.UserSession
 	err = json.Unmarshal([]byte(data), &session)
 	if err != nil {
 		return nil, err
 	}
-
 	return &session, nil
 }
 
-// InvalidateSession marks session as inactive
+// InvalidateSession marks session as inactive AND adds to blocklist
 func (s *AuthService) InvalidateSession(sessionID string) error {
-	// Deactivate in database
 	err := s.repo.DeactivateSession(sessionID)
 	if err != nil {
 		return fmt.Errorf("failed to deactivate session in database: %v", err)
 	}
-
-	// Remove from cache
 	if s.cache != nil {
 		ctx := context.Background()
 		key := sessionKeyPrefix + sessionID
-		err = s.cache.Del(ctx, key)
-		if err != nil {
-			log.Printf("[SESSION] Warning: Failed to delete session from cache: %v", err)
-		}
+		s.cache.Del(ctx, key)
 	}
-
-	return nil
+	return s.BlocklistSession(sessionID, 1*time.Hour)
 }
 
-// InvalidateAllUserSessions deactivates all sessions for a user
+// InvalidateAllUserSessions deactivates all sessions and blocklists the active one
 func (s *AuthService) InvalidateAllUserSessions(userID int64) error {
-	// Get active session for user to invalidate cache
-	activeSession, err := s.repo.GetActiveSessionByUserID(userID)
-	if err != nil {
-		return fmt.Errorf("failed to get active session: %v", err)
-	}
-
-	// Deactivate all in database
-	err = s.repo.DeactivateAllUserSessions(userID)
+	activeSession, _ := s.repo.GetActiveSessionByUserID(userID)
+	
+	err := s.repo.DeactivateAllUserSessions(userID)
 	if err != nil {
 		return fmt.Errorf("failed to deactivate user sessions in database: %v", err)
 	}
 
-	// Remove active session from cache
-	if activeSession != nil && s.cache != nil {
-		ctx := context.Background()
-		key := sessionKeyPrefix + activeSession.SessionID
-		err = s.cache.Del(ctx, key)
-		if err != nil {
-			log.Printf("[SESSION] Warning: Failed to delete session from cache: %v", err)
+	if activeSession != nil && activeSession.IsActive {
+		s.BlocklistSession(activeSession.SessionID, 1*time.Hour)
+		if s.cache != nil {
+			ctx := context.Background()
+			key := sessionKeyPrefix + activeSession.SessionID
+			s.cache.Del(ctx, key)
 		}
 	}
-
 	return nil
 }
 
-// UpdateSessionActivity updates the last activity timestamp
 func (s *AuthService) UpdateSessionActivity(sessionID string) error {
-	// Update in database
 	err := s.repo.UpdateSessionActivity(sessionID)
 	if err != nil {
 		return err
 	}
-
-	// Update in cache (reset TTL) if enabled
 	if s.cache != nil {
 		session, err := s.repo.GetSessionByID(sessionID)
 		if err == nil && session != nil {
@@ -199,37 +362,27 @@ func (s *AuthService) UpdateSessionActivity(sessionID string) error {
 			}
 		}
 	}
-
 	return nil
 }
 
-// GetUserSessionHistory retrieves session history for a user
 func (s *AuthService) GetUserSessionHistory(userID int64, limit int) ([]domain.UserSession, error) {
 	return s.repo.GetUserSessionHistory(userID, limit)
 }
 
-// ValidateToken validates a JWT token and checks if the session is active
 func (s *AuthService) ValidateToken(tokenString string) (*auth.Claims, error) {
-	// First validate the JWT itself
 	claims, err := auth.ValidateJWT(tokenString)
 	if err != nil {
 		return nil, err
 	}
-
-	// Check if session is still active
 	session, err := s.GetSession(claims.SessionID)
 	if err != nil {
 		return nil, fmt.Errorf("session validation failed: %v", err)
 	}
-
 	if session == nil || !session.IsActive {
 		return nil, errors.New("session invalidated")
 	}
-
-	// Check if session has expired
 	if time.Now().After(session.ExpiresAt) {
 		return nil, errors.New("session expired")
 	}
-
 	return claims, nil
 }

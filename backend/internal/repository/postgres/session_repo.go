@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 
 type SessionRepo struct {
@@ -186,4 +186,93 @@ func (r *SessionRepo) GetUserSessionHistory(userID int64, limit int) ([]domain.U
 	}
 
 	return sessions, nil
+}
+
+// --- Refresh Token Repository Methods ---
+
+// StoreRefreshToken stores a refresh token in the database
+func (r *SessionRepo) StoreRefreshToken(tokenID string, userID int64, sessionID string, expiresAt time.Time) error {
+	query := `
+	INSERT INTO refresh_tokens (token_id, user_id, session_id, expires_at)
+	VALUES ($1, $2, $3, $4);
+	`
+	_, err := r.DB.Exec(query, tokenID, userID, sessionID, expiresAt)
+	if err != nil {
+		return fmt.Errorf("failed to store refresh token: %v", err)
+	}
+	return nil
+}
+
+// GetRefreshToken retrieves a refresh token by its token_id
+func (r *SessionRepo) GetRefreshToken(tokenID string) (*domain.RefreshToken, error) {
+	query := `
+	SELECT id, token_id, user_id, session_id, expires_at, created_at, revoked
+	FROM refresh_tokens
+	WHERE token_id = $1;
+	`
+	var rt domain.RefreshToken
+	err := r.DB.QueryRow(query, tokenID).Scan(
+		&rt.ID,
+		&rt.TokenID,
+		&rt.UserID,
+		&rt.SessionID,
+		&rt.ExpiresAt,
+		&rt.CreatedAt,
+		&rt.Revoked,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get refresh token: %v", err)
+	}
+	return &rt, nil
+}
+
+// RevokeRefreshToken marks a specific refresh token as revoked
+func (r *SessionRepo) RevokeRefreshToken(tokenID string) error {
+	query := `
+	UPDATE refresh_tokens
+	SET revoked = TRUE
+	WHERE token_id = $1;
+	`
+	_, err := r.DB.Exec(query, tokenID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke refresh token: %v", err)
+	}
+	return nil
+}
+
+// RevokeAllUserRefreshTokens revokes all refresh tokens for a user
+func (r *SessionRepo) RevokeAllUserRefreshTokens(userID int64) error {
+	query := `
+	UPDATE refresh_tokens
+	SET revoked = TRUE
+	WHERE user_id = $1 AND revoked = FALSE;
+	`
+	_, err := r.DB.Exec(query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke all user refresh tokens: %v", err)
+	}
+	return nil
+}
+
+// CleanupOldRefreshTokens deletes revoked/expired refresh tokens
+func (r *SessionRepo) CleanupOldRefreshTokens(olderThanDays int) (int64, error) {
+	query := `
+	DELETE FROM refresh_tokens
+	WHERE (revoked = TRUE AND created_at < NOW() - INTERVAL '1 day' * $1)
+	   OR (expires_at < NOW());
+	`
+	result, err := r.DB.Exec(query, olderThanDays)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup old refresh tokens: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %v", err)
+	}
+
+	return rowsAffected, nil
 }

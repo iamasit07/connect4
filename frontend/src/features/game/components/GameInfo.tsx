@@ -87,7 +87,7 @@ export const GameInfo = () => {
           `}
         >
           <div className="w-8 h-8 sm:w-10 sm:h-10 relative flex-shrink-0">
-            <Disk player={1} />
+            <Disk player={isSpectator ? 1 : (myPlayer || 1)} />
             {leftSideWon && (
               <motion.div
                 initial={{ scale: 0 }}
@@ -174,7 +174,7 @@ export const GameInfo = () => {
           `}
         >
           <div className="w-8 h-8 sm:w-10 sm:h-10 relative flex-shrink-0">
-            <Disk player={2} />
+            <Disk player={isSpectator ? 2 : (myPlayer === 1 ? 2 : 1)} />
              {rightSideWon && (
               <motion.div
                 initial={{ scale: 0 }}

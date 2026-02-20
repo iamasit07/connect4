@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iamasit07/4-in-a-row/backend/pkg/auth"
-	"github.com/iamasit07/4-in-a-row/backend/pkg/httputil"
+	"github.com/iamasit07/connect4/backend/pkg/auth"
+	"github.com/iamasit07/connect4/backend/pkg/httputil"
 )
 
 // SessionValidator abstracts session validation (implemented by session.AuthService)

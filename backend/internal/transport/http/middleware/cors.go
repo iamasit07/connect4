@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iamasit07/4-in-a-row/backend/internal/config"
+	"github.com/iamasit07/connect4/backend/internal/config"
 )
 
 // SecurityHeadersMiddleware adds security headers to all HTTP responses.

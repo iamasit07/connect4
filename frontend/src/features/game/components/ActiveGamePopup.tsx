@@ -24,9 +24,20 @@ export const ActiveGamePopup: React.FC = () => {
   
   const location = useLocation();
   const navigate = useNavigate();
-  const { surrender, connect } = useGameSocket(); 
+  const { surrender, connect, disconnect, readyState } = useGameSocket(); 
   
   const [isOpen, setIsOpen] = useState(false);
+  const [isAbandoning, setIsAbandoning] = useState(false);
+
+  useEffect(() => {
+    if (isAbandoning && readyState === 1) {
+      surrender();
+      setIsAbandoning(false);
+      dismissActiveGamePopup();
+      setIsOpen(false);
+      setTimeout(() => disconnect(), 200);
+    }
+  }, [isAbandoning, readyState, surrender, disconnect, dismissActiveGamePopup]);
 
   useEffect(() => {
     if (!user?.activeGameId || isActiveGamePopupDismissed) return;
@@ -43,6 +54,7 @@ export const ActiveGamePopup: React.FC = () => {
   const handleReconnect = () => {
     const targetGameId = user?.activeGameId || activeGameId;
     if (targetGameId) {
+      useGameStore.getState().setConnectionStatus('disconnected');
       setIsOpen(false);
       navigate(`/game/${targetGameId}`);
     }
@@ -50,12 +62,19 @@ export const ActiveGamePopup: React.FC = () => {
 
   const handleAbandon = async () => {
     try {
+        setIsAbandoning(true);
         await connect();
+        
+        // Safety timeout in case connection fails to open quickly
         setTimeout(() => {
-            surrender();
-            dismissActiveGamePopup();
-            setIsOpen(false);
-        }, 100);
+            setIsAbandoning((prev) => {
+                if (prev) {
+                    dismissActiveGamePopup();
+                    setIsOpen(false);
+                }
+                return false;
+            });
+        }, 5000);
     } catch (error) {
         console.error("Failed to connect for abandon:", error);
         dismissActiveGamePopup();

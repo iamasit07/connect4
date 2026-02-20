@@ -21,6 +21,8 @@ type Config struct {
 	DBConnMaxLifetimeMin int
 	FrontendURL          string
 	JWTSecret            string
+	AccessTokenTTLMinutes int
+	RefreshTokenTTLDays   int
 }
 
 var AppConfig *Config
@@ -31,7 +33,7 @@ func LoadConfig() *Config {
 	botToken := GetEnv("BOT_TOKEN", "tkn_bot_default")
 
 	// Frontend & CORS
-	frontendURL := GetEnv("FRONTEND_URL", "https://4-in-a-row.iamasit07.me")
+	frontendURL := GetEnv("FRONTEND_URL", "https://connect4.iamasit07.me")
 	allowedOriginsStr := GetEnv("ALLOWED_ORIGINS", "")
 
 	// Build allowed origins list (Frontend URL + Localhost + CSV values)
@@ -68,21 +70,25 @@ func LoadConfig() *Config {
 
 	// Security
 	jwtSecret := GetEnv("JWT_SECRET", "your-secret-key-change-this-in-production")
+	accessTokenTTL := GetEnvAsInt("ACCESS_TOKEN_TTL_MINUTES", 15)
+	refreshTokenTTL := GetEnvAsInt("REFRESH_TOKEN_TTL_DAYS", 7)
 
 	oauthConfig := LoadOAuthConfig(frontendURL)
 
 	AppConfig = &Config{
-		Port:                 port,
-		MatchmakingTimeout:   time.Duration(matchmakingTimeoutSec) * time.Second,
-		BotToken:             botToken,
-		AllowedOrigins:       allowedOrigins,
-		OAuthConfig:          *oauthConfig,
-		DatabaseURL:          dbURL,
-		DBMaxOpenConns:       dbMaxOpenConns,
-		DBMaxIdleConns:       dbMaxIdleConns,
-		DBConnMaxLifetimeMin: dbConnMaxLifetimeMin,
-		FrontendURL:          frontendURL,
-		JWTSecret:            jwtSecret,
+		Port:                  port,
+		MatchmakingTimeout:    time.Duration(matchmakingTimeoutSec) * time.Second,
+		BotToken:              botToken,
+		AllowedOrigins:        allowedOrigins,
+		OAuthConfig:           *oauthConfig,
+		DatabaseURL:           dbURL,
+		DBMaxOpenConns:        dbMaxOpenConns,
+		DBMaxIdleConns:        dbMaxIdleConns,
+		DBConnMaxLifetimeMin:  dbConnMaxLifetimeMin,
+		FrontendURL:           frontendURL,
+		JWTSecret:             jwtSecret,
+		AccessTokenTTLMinutes: accessTokenTTL,
+		RefreshTokenTTLDays:   refreshTokenTTL,
 	}
 
 	return AppConfig

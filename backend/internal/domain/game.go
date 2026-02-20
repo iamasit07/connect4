@@ -5,6 +5,7 @@ type Game struct {
 	CurrentPlayer PlayerID
 	Status GameStatus
 	Winner PlayerID
+	WinningCells []int
 	MoveCount int
 }
 
@@ -34,9 +35,11 @@ func (g *Game) MakeMove(player PlayerID, column int) (int, error) {
 	
 	g.MoveCount++
 
-	if CheckWin(g.Board, row, column, g.CurrentPlayer) {
+	winningCells, won := CheckWin(g.Board, row, column, g.CurrentPlayer)
+	if won {
 		g.Status = StatusWon
 		g.Winner = g.CurrentPlayer
+		g.WinningCells = winningCells
 		return row, nil
 	}
 

@@ -4,7 +4,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: 4-in-a-row-frontend
+    container_name: connect4-frontend
     ports:
       - "80:80"
     environment:
@@ -20,7 +20,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: 4-in-a-row-backend
+    container_name: connect4-backend
     ports:
       - "8080:8080"
     env_file:
@@ -37,7 +37,7 @@ services:
   # Redis: Same as dev
   redis:
     image: redis:7-alpine
-    container_name: 4-in-a-row-redis
+    container_name: connect4-redis
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru

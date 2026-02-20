@@ -3,7 +3,7 @@ package bot
 import (
 	"math"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 
 
@@ -36,7 +36,7 @@ func CalculateBestMoveMinimax(board [][]domain.PlayerID, botPlayer domain.Player
 		testBoard, row, _ := domain.SimulateMove(board, col, botPlayer)
 		
 		// If this move wins immediately, take it
-		if domain.CheckWin(testBoard, row, col, botPlayer) {
+		if _, won := domain.CheckWin(testBoard, row, col, botPlayer); won {
 			return col
 		}
 
@@ -69,7 +69,7 @@ func minimax(board [][]domain.PlayerID, depth int, alpha, beta int, isMaximizing
 			testBoard, row, _ := domain.SimulateMove(board, col, botPlayer)
 			
 			// Check for win
-			if domain.CheckWin(testBoard, row, col, botPlayer) {
+			if _, won := domain.CheckWin(testBoard, row, col, botPlayer); won {
 				return MINIMAX_WIN - (MINIMAX_DEPTH - depth) // Prefer quicker wins
 			}
 
@@ -88,7 +88,7 @@ func minimax(board [][]domain.PlayerID, depth int, alpha, beta int, isMaximizing
 			testBoard, row, _ := domain.SimulateMove(board, col, opponent)
 			
 			// Check for opponent win
-			if domain.CheckWin(testBoard, row, col, opponent) {
+			if _, won := domain.CheckWin(testBoard, row, col, opponent); won {
 				return MINIMAX_LOSS + (MINIMAX_DEPTH - depth) // Prefer delaying losses
 			}
 

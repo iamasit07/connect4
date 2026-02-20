@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/config"
+	"github.com/iamasit07/connect4/backend/internal/config"
 	"github.com/redis/go-redis/v9"
 )
 

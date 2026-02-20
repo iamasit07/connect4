@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/iamasit07/4-in-a-row/backend/internal/config"
-	"github.com/iamasit07/4-in-a-row/backend/internal/repository/postgres"
-	"github.com/iamasit07/4-in-a-row/backend/pkg/auth"
-	"github.com/iamasit07/4-in-a-row/backend/pkg/httputil"
-	"github.com/iamasit07/4-in-a-row/backend/pkg/useragent"
+	"github.com/iamasit07/connect4/backend/internal/config"
+	"github.com/iamasit07/connect4/backend/internal/repository/postgres"
+	"github.com/iamasit07/connect4/backend/internal/service/session"
+	"github.com/iamasit07/connect4/backend/pkg/auth"
+	"github.com/iamasit07/connect4/backend/pkg/httputil"
+	"github.com/iamasit07/connect4/backend/pkg/useragent"
 )
 
 type OAuthHandler struct {
@@ -21,15 +22,17 @@ type OAuthHandler struct {
 	SessionRepo *postgres.SessionRepo
 	Config      *config.OAuthConfig
 	ConnManager Disconnector // Reusing the interface from auth.go
+	AuthService *session.AuthService
 }
 
-// NewOAuthHandler now requires SessionRepo and Disconnector (ConnManager)
-func NewOAuthHandler(userRepo *postgres.UserRepo, sessionRepo *postgres.SessionRepo, cfg *config.OAuthConfig, cm Disconnector) *OAuthHandler {
+// NewOAuthHandler now requires SessionRepo, Disconnector (ConnManager), and AuthService
+func NewOAuthHandler(userRepo *postgres.UserRepo, sessionRepo *postgres.SessionRepo, cfg *config.OAuthConfig, cm Disconnector, authSvc *session.AuthService) *OAuthHandler {
 	return &OAuthHandler{
 		UserRepo:    userRepo,
 		SessionRepo: sessionRepo,
 		Config:      cfg,
 		ConnManager: cm,
+		AuthService: authSvc,
 	}
 }
 
@@ -68,8 +71,9 @@ func (h *OAuthHandler) GoogleCallback(c *gin.Context) {
 			}
 		}
 
-		// Security: Invalidate old sessions
+		// Security: Invalidate old sessions and refresh tokens
 		h.SessionRepo.DeactivateAllUserSessions(user.ID)
+		h.AuthService.RevokeAllUserRefreshTokens(user.ID)
 		if h.ConnManager != nil {
 			h.ConnManager.DisconnectUser(user.ID, "Logged in from another device via Google")
 		}
@@ -87,15 +91,15 @@ func (h *OAuthHandler) GoogleCallback(c *gin.Context) {
 			return
 		}
 
-		// Generate Login JWT
-		jwtToken, err := auth.GenerateJWT(user.ID, user.Username, sessionID)
+		// Generate token pair (access + refresh)
+		accessToken, refreshToken, err := h.AuthService.GenerateTokenPair(user.ID, user.Username, sessionID)
 		if err != nil {
 			c.Redirect(http.StatusTemporaryRedirect, config.AppConfig.FrontendURL+"/login?error=token_error")
 			return
 		}
 
-		// Set cookie and redirect to dashboard
-		httputil.SetAuthCookie(c.Writer, jwtToken)
+		// Set cookies and redirect to dashboard
+		httputil.SetTokenPairCookies(c.Writer, accessToken, refreshToken)
 		c.Redirect(http.StatusTemporaryRedirect, config.AppConfig.FrontendURL+"/dashboard")
 
 	} else {
@@ -148,8 +152,10 @@ func (h *OAuthHandler) CompleteGoogleSignup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Username 'BOT' is reserved"})
 		return
 	}
-	if len(req.Password) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 6 characters"})
+
+	// Validate password strength
+	if err := auth.ValidatePasswordStrength(req.Password); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -187,12 +193,16 @@ func (h *OAuthHandler) CompleteGoogleSignup(c *gin.Context) {
 
 	h.SessionRepo.CreateSession(userID, sessionID, deviceInfo, ipAddress, expiresAt)
 
-	// 6. Generate Login Token
-	token, _ := auth.GenerateJWT(userID, req.Username, sessionID)
+	// 6. Generate token pair (access + refresh)
+	accessToken, refreshToken, err := h.AuthService.GenerateTokenPair(userID, req.Username, sessionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+		return
+	}
 
-	httputil.SetAuthCookie(c.Writer, token)
+	httputil.SetTokenPairCookies(c.Writer, accessToken, refreshToken)
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
+		"token": accessToken,
 		"user": gin.H{
 			"id":         userID,
 			"username":   req.Username,

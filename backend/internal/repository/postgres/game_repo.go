@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iamasit07/4-in-a-row/backend/internal/domain"
+	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 
 type GameRepo struct {
