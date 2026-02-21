@@ -4,56 +4,28 @@ import { Button } from "@/components/ui/button";
 
 interface RematchRequestProps {
   onSendRequest: () => void;
-  onAcceptRequest: () => void;
-  onDeclineRequest: () => void;
   rematchStatus: 'idle' | 'sent' | 'received' | 'accepted' | 'declined';
   opponentName: string;
 }
 
 export const RematchRequest = ({
   onSendRequest,
-  onAcceptRequest,
-  onDeclineRequest,
   rematchStatus,
   opponentName,
 }: RematchRequestProps) => {
-  const TIMEOUT = 10;
-  const [countdown, setCountdown] = useState(TIMEOUT);
-
-  useEffect(() => {
-    if (rematchStatus === 'received') {
-      setCountdown(TIMEOUT);
-      const interval = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(interval);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [rematchStatus]);
-
-  // Auto-decline on timeout
-  useEffect(() => {
-    if (rematchStatus === 'received' && countdown === 0) {
-      onDeclineRequest();
-    }
-  }, [countdown, rematchStatus, onDeclineRequest]);
-
   if (rematchStatus === 'received') {
     return (
-      <div className="flex gap-2 w-full items-center">
-        <Button onClick={onAcceptRequest} size="sm" className="flex-1 gap-1.5 h-9 sm:h-11 bg-primary text-primary-foreground hover:bg-primary/90 text-sm sm:text-base">
-          <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          <span className="truncate">Accept ({countdown}s)</span>
-        </Button>
-        <Button onClick={onDeclineRequest} variant="outline" size="sm" className="flex-x gap-1.5 h-9 sm:h-11 px-3">
-          <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-        </Button>
-      </div>
+       <Button disabled className="gap-2 w-full h-9 sm:h-11 text-sm sm:text-base">
+         Respond to {opponentName}...
+       </Button>
+    );
+  }
+
+  if (rematchStatus === 'declined') {
+    return (
+       <Button disabled variant="outline" className="gap-2 w-full h-9 sm:h-11 text-sm sm:text-base border-red-200 bg-red-50/50 text-red-600 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-400">
+         Rematch Declined
+       </Button>
     );
   }
 

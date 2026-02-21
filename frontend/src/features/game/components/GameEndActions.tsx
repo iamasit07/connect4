@@ -7,16 +7,12 @@ interface GameEndActionsProps {
   onPlayAgain: () => void;
   onGoHome: () => void;
   onSendRematch?: () => void;
-  onAcceptRematch?: () => void;
-  onDeclineRematch?: () => void;
 }
 
 export const GameEndActions = ({
   onPlayAgain,
   onGoHome,
   onSendRematch,
-  onAcceptRematch,
-  onDeclineRematch,
 }: GameEndActionsProps) => {
   const { gameStatus, gameMode, rematchStatus, opponent } = useGameStore();
 
@@ -45,8 +41,6 @@ export const GameEndActions = ({
           <div className="flex-1">
              <RematchRequest
                 onSendRequest={onSendRematch}
-                onAcceptRequest={onAcceptRematch}
-                onDeclineRequest={onDeclineRematch}
                 rematchStatus={rematchStatus}
                 opponentName={opponent || "Opponent"}
               />

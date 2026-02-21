@@ -4,6 +4,7 @@ import { Board } from "../components/Board";
 import { GameInfo } from "../components/GameInfo";
 import { GameControls } from "../components/GameControls";
 import { GameEndActions } from "../components/GameEndActions";
+import { RematchPopup } from "../components/RematchPopup";
 import { useGameSocket } from "../hooks/useGameSocket";
 import { useGameStore } from "../store/gameStore";
 import { toast } from "sonner";
@@ -219,13 +220,18 @@ const GamePage = () => {
                 onPlayAgain={handlePlayAgain}
                 onGoHome={handleGoHome}
                 onSendRematch={handleSendRematch}
-                onAcceptRematch={handleAcceptRematch}
-                onDeclineRematch={handleDeclineRematch}
               />
             </>
           )}
         </div>
       </div>
+      {rematchStatus === 'received' && (
+        <RematchPopup
+          onAcceptRequest={handleAcceptRematch}
+          onDeclineRequest={handleDeclineRematch}
+          opponentName={opponent || "Opponent"}
+        />
+      )}
     </div>
   );
 };
