@@ -42,7 +42,7 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 
 	defer tx.Rollback()
 
-	isDraw := (winnerID == nil)
+	isDraw := (reason == "draw")
 
 	// Fetch current ratings for Elo calculation
 	p1Rating, err := r.getPlayerRatingTx(tx, player1ID)
@@ -67,7 +67,7 @@ func (r *GameRepo) SaveGame(gameID string, player1ID int64, player1Username stri
 		p2Result = "draw"
 		p1NewRating = domain.CalculateElo(p1Rating, p2Rating, 0.5)
 		p2NewRating = domain.CalculateElo(p2Rating, p1Rating, 0.5)
-	} else if *winnerID == player1ID {
+	} else if winnerID != nil && *winnerID == player1ID {
 		p1Result = "won"
 		p2Result = "lost"
 		p1NewRating = domain.CalculateElo(p1Rating, p2Rating, 1.0)
