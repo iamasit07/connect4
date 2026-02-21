@@ -22,6 +22,7 @@ interface GameStore {
   // Connection state
   connectionStatus: ConnectionStatus;
   connectionError: string | null;
+  shouldConnect: boolean;
 
   // Game state
   gameId: string | null;
@@ -57,6 +58,7 @@ interface GameStore {
 
   // Connection actions
   setConnectionStatus: (status: ConnectionStatus, error?: string) => void;
+  setShouldConnect: (shouldConnect: boolean) => void;
 
   // Game actions
   setQueuing: (mode: GameMode, difficulty?: BotDifficulty) => void;
@@ -126,6 +128,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // Connection state
   connectionStatus: "disconnected",
   connectionError: null,
+  shouldConnect: false,
 
   // Game state
   gameId: null,
@@ -164,6 +167,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       connectionStatus,
       connectionError: error || null,
     }),
+
+  setShouldConnect: (shouldConnect) => set({ shouldConnect }),
 
   setQueuing: (mode, difficulty) =>
     set({
@@ -247,6 +252,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({
       connectionStatus: "disconnected",
       connectionError: null,
+      shouldConnect: false,
       gameId: null,
       board: createEmptyBoard(),
       currentTurn: 1,

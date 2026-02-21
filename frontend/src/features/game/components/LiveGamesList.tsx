@@ -54,7 +54,8 @@ export const LiveGamesList = ({ onSpectate }: LiveGamesListProps) => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
-              className="group flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+              className="group flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
+              onClick={() => onSpectate(game.gameId)}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 text-sm font-medium">
@@ -80,8 +81,7 @@ export const LiveGamesList = ({ onSpectate }: LiveGamesListProps) => {
               <Button
                 size="sm"
                 variant="secondary"
-                className="gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={() => onSpectate(game.gameId)}
+                className="gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
               >
                 <Eye className="w-3.5 h-3.5" />
                 Watch

@@ -24,7 +24,6 @@ const QueuePage = () => {
     
     return () => {
       if (!gameFound.current) {
-        disconnect();
         resetGame();
       }
     };

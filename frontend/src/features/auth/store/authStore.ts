@@ -5,6 +5,7 @@ interface AuthActions {
   setUser: (user: User) => void;
   logout: () => void;
   setLoading: (loading: boolean) => void;
+  setActiveGameId: (gameId: string) => void;
   clearActiveGameId: () => void;
 }
 
@@ -30,6 +31,10 @@ export const useAuthStore = create<AuthState & AuthActions>()((set) => ({
   },
 
   setLoading: (loading) => set({ isLoading: loading }),
+
+  setActiveGameId: (gameId) => set((state) => ({
+    user: state.user ? { ...state.user, activeGameId: gameId } : null,
+  })),
 
   clearActiveGameId: () => set((state) => ({
     user: state.user ? { ...state.user, activeGameId: undefined } : null,

@@ -91,6 +91,26 @@ func (sm *SessionManager) CreateSession(player1ID int64, player1Username string,
 		sm.onSessionCreated(session)
 	}
 
+	session.sendEvent(player1ID, domain.ServerMessage{
+		Type:        "game_start", 
+		GameID:      session.GameID,
+		Opponent:    player2Username,
+		YourPlayer:  int(domain.Player1),
+		CurrentTurn: int(session.Game.CurrentPlayer),
+		Board:       session.Game.Board,
+	})
+
+	if player2ID != nil {
+		session.sendEvent(*player2ID, domain.ServerMessage{
+			Type:        "game_start", 
+			GameID:      session.GameID,
+			Opponent:    player1Username,
+			YourPlayer:  int(domain.Player2),
+			CurrentTurn: int(session.Game.CurrentPlayer),
+			Board:       session.Game.Board,
+		})
+	}
+
 	return session
 }
 
@@ -301,47 +321,6 @@ func NewGameSession(player1ID int64, player1Username string, player2ID *int64, p
 	}
 
 	gs.startTurnTimer()
-
-	// Notify players directly via event
-	recipients := []int64{player1ID}
-	if player2ID != nil {
-		recipients = append(recipients, *player2ID)
-	}
-
-	gs.broadcastEvent(domain.GameEvent{
-		Type:       domain.EventGameStart,
-		Recipients: recipients,
-		Payload: domain.ServerMessage{
-			Type:        "game_start",
-			GameID:      gs.GameID,
-			Opponent:    player2Username,
-			YourPlayer:  int(domain.Player1),
-			CurrentTurn: int(gs.Game.CurrentPlayer),
-			Board:       gs.Game.Board,
-		},
-	})
-	
-	// Direct send to Player 1 - OVERRIDE for custom field
-	gs.sendEvent(player1ID, domain.ServerMessage{
-		Type:        "game_start", 
-		GameID:      gs.GameID,
-		Opponent:    player2Username,
-		YourPlayer:  int(domain.Player1),
-		CurrentTurn: int(gs.Game.CurrentPlayer),
-		Board:       gs.Game.Board,
-	})
-
-	if player2ID != nil {
-		gs.sendEvent(*player2ID, domain.ServerMessage{
-			Type:        "game_start", 
-			GameID:      gs.GameID,
-			Opponent:    player1Username,
-			YourPlayer:  int(domain.Player2),
-			CurrentTurn: int(gs.Game.CurrentPlayer),
-			Board:       gs.Game.Board,
-		})
-	}
-
 	return gs
 }
 
@@ -911,6 +890,7 @@ func (gs *GameSession) HandleRematchResponse(userID int64, accept bool, sessionM
 	}
 
 	if !accept {
+		requesterID := *gs.RematchRequester
 		gs.RematchRequester = nil
 		if gs.RematchRequestTimer != nil {
 			gs.RematchRequestTimer.Stop()
@@ -919,7 +899,7 @@ func (gs *GameSession) HandleRematchResponse(userID int64, accept bool, sessionM
 		
 		gs.broadcastEvent(domain.GameEvent{
 			Type: domain.EventInfo,
-			Recipients: []int64{*gs.RematchRequester},
+			Recipients: []int64{requesterID},
 			Payload: domain.ServerMessage{
 				Type: "rematch_declined",
 				Message: "Opponent declined rematch",
@@ -934,12 +914,23 @@ func (gs *GameSession) HandleRematchResponse(userID int64, accept bool, sessionM
 	p2ID := gs.Player2ID
 	p2Name := gs.Player2Username
 	botDiff := gs.BotDifficulty
+	oldGameID := gs.GameID
 
-	// Create new session
-	gs.mu.Unlock() // Unlock to call SessionManager (which locks)
+	// Send rematch_accepted via old session (still valid at this point)
+	gs.broadcastEvent(domain.GameEvent{
+		Type:       domain.EventInfo,
+		Recipients: []int64{p1ID, *p2ID},
+		Payload: domain.ServerMessage{
+			Type:    "rematch_accepted",
+			Message: "Rematch accepted! Starting new game...",
+		},
+	})
+
+	// Clean up old session and create new one
+	gs.mu.Unlock()
+	sessionManager.RemoveSession(oldGameID)
 	sessionManager.CreateRematchSession(p1ID, p1Name, p2ID, p2Name, botDiff)
 	gs.mu.Lock()
-	
 	return nil
 }
 
@@ -957,7 +948,7 @@ func (gs *GameSession) TerminateSessionWithReason(userID int64, reason string) {
 	gs.Game.Status = domain.StatusWon // For abandonment
 	
 	winnerID := gs.GetOpponentID(userID)
-	winnerName := gs.GetOpponentUsername(userID)
+	winnerName := gs.GetOpponentUsername(userID)   
 
 	// Broadacst
 	recipients := gs.getAllParticipants()
