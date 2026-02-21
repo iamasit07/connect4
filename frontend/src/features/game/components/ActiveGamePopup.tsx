@@ -48,7 +48,12 @@ export const ActiveGamePopup: React.FC = () => {
     const authPages = ["/login", "/signup", "/auth/callback", "/complete-signup"];
     if (authPages.includes(location.pathname)) return;
 
-    setIsOpen(true);
+    if (location.pathname.startsWith('/play')) return;
+    const timeout = setTimeout(() => {
+      setIsOpen(true);
+    }, 500);
+
+    return () => clearTimeout(timeout);
   }, [user?.activeGameId, location.pathname, isActiveGamePopupDismissed]);
 
   const handleReconnect = () => {
@@ -65,7 +70,6 @@ export const ActiveGamePopup: React.FC = () => {
         setIsAbandoning(true);
         await connect();
         
-        // Safety timeout in case connection fails to open quickly
         setTimeout(() => {
             setIsAbandoning((prev) => {
                 if (prev) {

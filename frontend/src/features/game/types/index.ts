@@ -103,7 +103,7 @@ export interface QueueLeftMessage {
 }
 
 export interface RematchRequestMessage {
-  type: "rematch_request";
+  type: "rematch_requested";
   rematchRequester: string;
   rematchTimeout: number;
 }

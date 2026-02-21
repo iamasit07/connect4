@@ -4,7 +4,6 @@ import { Board } from "../components/Board";
 import { GameInfo } from "../components/GameInfo";
 import { GameControls } from "../components/GameControls";
 import { GameEndActions } from "../components/GameEndActions";
-import { RematchOverlay } from "../components/RematchRequest";
 import { useGameSocket } from "../hooks/useGameSocket";
 import { useGameStore } from "../store/gameStore";
 import { toast } from "sonner";
@@ -19,13 +18,9 @@ const GamePage = () => {
   const navigate = useNavigate();
   const { user, isLoading: isAuthLoading } = useAuthStore();
 
-  // Handle new game starting from a rematch
-  const onGameStart = useCallback(
-    (newGameId: string) => {
+  const onGameStart = useCallback((newGameId: string) => {
       navigate(`/game/${newGameId}`, { replace: true });
-    },
-    [navigate],
-  );
+    }, [navigate]);
 
   const { makeMove, surrender, disconnect, sendMessage, leaveSpectate, connect } =
     useGameSocket(onGameStart);
@@ -48,11 +43,20 @@ const GamePage = () => {
       return;
     }
 
+    if (gameStatus === "playing" && storeGameId && storeGameId !== gameId) {
+      return;
+    }
+
+    let isMounted = true;
+
     const fetchGame = async () => {
       if (!gameId || !user) return;
       try {
         const details = await gameService.getGameDetails(gameId);
         
+        // Discard result if deps changed while request was in-flight
+        if (!isMounted) return;
+
         // If game is finished
         if (details.FinishedAt && details.FinishedAt !== "0001-01-01T00:00:00Z") {
            loadFinishedGame({
@@ -64,14 +68,17 @@ const GamePage = () => {
              reason: details.Reason,
              myUserId: parseInt(user.id),
            });
-           toast.info("This game has already ended.");
         } 
       } catch (error) {
-        console.error("Failed to fetch game details:", error);
+        if (isMounted) console.error("Failed to fetch game details:", error);
       }
     };
 
     fetchGame();
+
+    return () => {
+      isMounted = false;
+    };
   }, [gameId, storeGameId, gameStatus, user, loadFinishedGame]);
 
   useEffect(() => {
@@ -84,23 +91,14 @@ const GamePage = () => {
   }, [connect, connectionStatus, gameStatus, gameMode]);
 
   useEffect(() => {
-    // Only disconnect when leaving the page entirely
-    return () => {
-      disconnect();
-    };
-  }, [disconnect]);
-
-  // Route Guard: Redirect to active game if trying to access another
-  useEffect(() => {
     if (isAuthLoading || !user) return;
+    if (storeGameId && storeGameId !== gameId) return;
 
     if (user.activeGameId && user.activeGameId !== gameId && !isSpectator) {
-      toast.warning("You have an active game in progress!");
       navigate(`/game/${user.activeGameId}`, { replace: true });
     }
-  }, [user, gameId, isSpectator, navigate, isAuthLoading]);
+  }, [user, gameId, storeGameId, isSpectator, navigate, isAuthLoading]);
 
-  // Sync Store Game with URL
   useEffect(() => {
     if (gameStatus === "playing" && storeGameId && storeGameId !== gameId) {
       navigate(`/game/${storeGameId}`, { replace: true });
@@ -131,7 +129,6 @@ const GamePage = () => {
       resetGame();
       navigate("/play/bot", { state: { difficulty: botDifficulty } });
     } else {
-      // For PvP without rematch: go back to queue
       disconnect();
       resetGame();
       navigate("/play/queue", { state: { from: `/game/${gameId}` } });
@@ -147,7 +144,6 @@ const GamePage = () => {
   const handleSendRematch = () => {
     sendMessage({ type: "request_rematch" });
     setRematchStatus("sent");
-    toast.info("Rematch request sent!");
   };
 
   const handleAcceptRematch = () => {
@@ -162,7 +158,6 @@ const GamePage = () => {
 
   const isPvP = gameMode === "pvp";
 
-  // Show loading if game not started yet
   if (gameStatus !== "playing" && gameStatus !== "finished") {
     return (
       <div className="flex-1 bg-background flex items-center justify-center">
@@ -179,7 +174,7 @@ const GamePage = () => {
       <div className="w-full max-w-[min(90vw,500px)] flex flex-col h-full py-4 gap-4">
         <DisconnectionTimer />
         {/* Header Area: Banner or Info */}
-        <div className="flex-shrink-0 w-full min-h-[60px] flex flex-col justify-end">
+        <div className="shrink-0 w-full min-h-[60px] flex flex-col justify-end">
           <GameInfo />
         </div>
 
@@ -198,18 +193,10 @@ const GamePage = () => {
               </div>
             </div>
           )}
-
-          {!isSpectator && rematchStatus === "received" && (
-            <RematchOverlay
-              onAccept={handleAcceptRematch}
-              onDecline={handleDeclineRematch}
-              opponentName={opponent || "Opponent"}
-            />
-          )}
         </div>
 
         {/* Footer Area: Fixed height controls */}
-        <div className="flex-shrink-0 w-full flex flex-col gap-2 pb-safe">
+        <div className="shrink-0 w-full flex flex-col gap-2 pb-safe">
           {isSpectator ? (
             <div className="flex justify-center mt-2 sm:mt-4">
               <Button
@@ -231,6 +218,9 @@ const GamePage = () => {
               <GameEndActions
                 onPlayAgain={handlePlayAgain}
                 onGoHome={handleGoHome}
+                onSendRematch={handleSendRematch}
+                onAcceptRematch={handleAcceptRematch}
+                onDeclineRematch={handleDeclineRematch}
               />
             </>
           )}
