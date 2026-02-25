@@ -13,7 +13,6 @@ export const useGameSocket = (
   const shouldConnect = useGameStore(state => state.shouldConnect);
   const [token, setToken] = useState<string | null>(null);
   
-  // Refs for tracking state that shouldn't cause re-renders in callbacks
   const onGameStartRef = useRef<((gameId: string) => void) | undefined>(onGameStart);
   const onQueueTimeoutRef = useRef<(() => void) | undefined>(onQueueTimeout);
   const disconnectToastIdRef = useRef<string | number | undefined>(undefined);
@@ -28,7 +27,6 @@ export const useGameSocket = (
     onQueueTimeoutRef.current = onQueueTimeout;
   }, [onQueueTimeout]);
 
-  // Fetch token function
   const fetchToken = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/me`, {
@@ -52,7 +50,6 @@ export const useGameSocket = (
     {
       share: true,
       shouldReconnect: (closeEvent) => {
-        // Don't reconnect on normal closures
         return closeEvent.code !== 1000;
       },
       reconnectAttempts: 10,
@@ -68,7 +65,6 @@ export const useGameSocket = (
       },
       onError: (event) => {
         console.error("WebSocket error:", event);
-        // We let the reconnect logic handle attempts, just set state
       },
       onMessage: (event) => {
         try {
@@ -78,8 +74,6 @@ export const useGameSocket = (
             onQueueTimeoutRef.current();
           }
 
-          // We use event loop queue to ensure handleMessage gets the latest closure if needed,
-          // though react-use-websocket maintains freshness of options callbacks.
           handleMessage(message);
         } catch (e) {
           console.error("Failed to parse message", e);
@@ -174,7 +168,6 @@ export const useGameSocket = (
       }
 
       case "game_state": {
-        // Reconnect scenario: game_state includes gameId + yourPlayer
         if (message.gameId && message.yourPlayer) {
           store.initGame({
             gameId: message.gameId,
@@ -185,7 +178,6 @@ export const useGameSocket = (
             disconnectTimeout: message.disconnectTimeout,
           });
 
-          // Handle Post-Game State Sync
           if (message.winner) {
             useAuthStore.getState().clearActiveGameId();
             store.endGame({
@@ -200,7 +192,6 @@ export const useGameSocket = (
               store.setRematchStatus('received');
           }
         } else {
-          // Simple state refresh (no full reinit needed)
           store.updateGameState({
             board: message.board as Board,
             currentTurn: message.currentTurn,
@@ -333,23 +324,11 @@ export const useGameSocket = (
     await connect();
 
     useGameStore.getState().setQueuing(mode, difficulty);
-    const attemptSend = () => {
-        if (getWebSocket()?.readyState === WebSocket.OPEN) {
-            sendWsMessage(JSON.stringify({
-              type: 'find_match',
-              difficulty: mode === 'bot' ? (difficulty || 'easy') : '',
-            }));
-        } else {
-          sendWsMessage(JSON.stringify({
-              type: 'find_match',
-              difficulty: mode === 'bot' ? (difficulty || 'easy') : '',
-            }));
-        }
-    };
-    
-    attemptSend();
-
-  }, [connect, sendWsMessage, getWebSocket]);
+    sendWsMessage(JSON.stringify({
+      type: 'find_match',
+      difficulty: mode === 'bot' ? (difficulty || 'easy') : '',
+    }));
+  }, [connect, sendWsMessage]);
 
   const makeMove = useCallback((column: number) => {
     send({ type: 'make_move', column });

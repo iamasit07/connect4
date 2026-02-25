@@ -21,12 +21,8 @@ const AuthCallback = () => {
         return;
       }
 
-      // The backend sets the HttpOnly cookie automatically
-      // We just need to fetch user data to confirm authentication
       try {
-        setLoading(true);
-        
-        // Fetch user data (cookie is sent automatically)
+        setLoading(true);        
         const response = await api.get<User>('/auth/me');
         setUser(response.data);
         toast.success('Successfully signed in with Google!');
@@ -35,7 +31,6 @@ const AuthCallback = () => {
         console.error('Auth callback failed:', err);
         const errorMessage = err.response?.data?.error || err.message || 'Failed to complete authentication';
         toast.error(errorMessage);
-        // Delay redirect slightly so user can see the error
         setTimeout(() => navigate('/login'), 2000);
       } finally {
         setLoading(false);

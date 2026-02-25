@@ -27,6 +27,7 @@ import {
   useRemoveAvatar,
 } from "@/hooks/queries/useAuthQueries";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { AxiosError } from "axios";
 
 const Profile = () => {
   const { user, setUser } = useAuthStore();
@@ -80,7 +81,7 @@ const Profile = () => {
       setUser(response.user);
       toast.success("Profile updated successfully");
       setIsEditing(false);
-    } catch (error) {
+    } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to update profile");
     }
   };
@@ -114,7 +115,7 @@ const Profile = () => {
         setUser({ ...user, avatar_url: response.avatar_url });
       }
       toast.success("Avatar updated successfully");
-    } catch (error) {
+    } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to upload avatar");
     }
 
@@ -129,7 +130,7 @@ const Profile = () => {
         setUser({ ...user, avatar_url: "" });
       }
       toast.success("Avatar removed");
-    } catch (error) {
+    } catch {
       toast.error("Failed to remove avatar");
     }
   };

@@ -1,124 +1,137 @@
 # Developer Guide
 
-Welcome to the Connect 4 project! This guide is designed to help you set up the development environment, understand the architecture, and start contributing to the project.
-
-## 🛠️ Prerequisites
-
-Before you begin, ensure you have the following installed on your machine:
-- **Go** 1.24+ (For the backend)
-- **Node.js** 18+ (For the frontend)
-- **PostgreSQL** 14+ (Local database or Supabase)
-- **Redis** (Used for rate limiting and cache)
-- **Docker** & **Docker Compose** (For easier environment setup)
+This guide covers local development setup, project architecture, and coding conventions for the Connect 4 project.
 
 ---
 
-## 🚀 Setting Up the Development Environment
+## Prerequisites
 
-### Using Docker (Recommended)
+| Tool                         | Version       | Purpose               |
+| ---------------------------- | ------------- | --------------------- |
+| **Go**                       | 1.24+         | Backend server        |
+| **Node.js**                  | 18+           | Frontend toolchain    |
+| **PostgreSQL**               | 14+           | Database              |
+| **Redis**                    | Latest        | Caching               |
+| **Docker** + Docker Compose  | Latest        | Containerized setup   |
 
-The easiest way to get everything running is via Docker Compose, which brings up PostgreSQL, Redis, the Go backend (with hot reload via Air), and the React frontend (with Vite HMR).
+---
+
+## Development Setup
+
+### Docker (Recommended)
+
+Docker Compose brings up PostgreSQL, Redis, the Go backend (with [Air](https://github.com/air-verse/air) hot reload), and the React frontend (with Vite HMR).
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/iamasit07/connect4.git
 cd connect4
-
-# 2. Setup your environment variables
-cp .env.example .env
-
-# 3. Start the entire stack
+cp .env.example .env    # Configure your environment
 docker compose up --build
 ```
 
-### Manual Setup
+### Manual
 
-If you prefer to run services manually on your host machine:
+See [README.md → Getting Started](./README.md#getting-started) for step-by-step backend and frontend commands.
 
-#### 1. Backend
+---
 
-The backend is a monolithic Go service built with standard library tools and Gorilla WebSocket.
+## Architecture
 
-```bash
-cd backend
-go mod download
+### Backend (Go)
 
-# Create a local .env file
-cat > .env << EOF
-DATABASE_URI=postgresql://user:password@localhost:5432/four_in_a_row
-JWT_SECRET=your-secret-key
-PORT=8080
-REDIS_URL=redis://localhost:6379
-FRONTEND_URL=http://localhost:5173
-ALLOWED_ORIGINS=http://localhost:5173
-EOF
+The backend follows a layered, DDD-inspired structure inside `backend/internal/`:
 
-# Run the server
-go run ./cmd/api
+```
+cmd/api/main.go           → Entry point
+internal/config/           → Environment loading, Google OAuth config
+internal/domain/           → Core models (Game, Board, Player), events, messages
+internal/repository/       → PostgreSQL and Redis data access
+internal/service/          → Business logic
+  ├── bot/                 → AI engine (easy, medium, hard with minimax)
+  ├── cleanup/             → Background session/game garbage collection
+  ├── game/                → Game session lifecycle, turn logic
+  ├── matchmaking/         → PvP queue + auto bot-match on timeout
+  └── session/             → Auth service, JWT validation
+internal/transport/        → HTTP and WebSocket handlers
+  ├── http/                → REST endpoints (auth, history, OAuth)
+  └── websocket/           → WebSocket connection manager + event loop
+pkg/                       → Shared packages (JWT, password hashing, cookies)
 ```
 
-#### 2. Frontend
+All real-time game communication flows through WebSocket. Game sessions use dedicated Go channels (`gs.Events`) to decouple message handling from broadcasting and prevent race conditions.
 
-The frontend is a React 18 application built with TypeScript and Vite. It heavily utilizes Tailwind CSS and shadcn/ui.
+### Frontend (React + TypeScript)
 
-```bash
-cd frontend
-npm install
+The frontend uses a feature-based folder structure:
 
-# Create a local .env file
-cat > .env << EOF
-VITE_BACKEND_URL=http://localhost:8080
-VITE_WS_URL=ws://localhost:8080/ws
-EOF
-
-# Start the Vite development server
-npm run dev
+```
+src/
+├── components/            → Reusable UI (layout, header, shadcn/ui primitives)
+├── features/
+│   ├── auth/              → Login, signup, OAuth, auth store
+│   └── game/              → Board, game store, WebSocket hook, rematch
+├── hooks/                 → Custom hooks (queries, mobile detection)
+├── lib/                   → Axios instance, config constants, utilities
+├── pages/                 → Route-level page components
+└── stores/                → Zustand global state (theme)
 ```
 
 ---
 
-## 🗂️ Project Structure
+## Coding Conventions
 
-### Backend Architecture
+### State Management
 
-The backend follows a Domain-Driven Design (DDD) inspired structure within the `internal` package:
-- `cmd/api/main.go`: Entry point for the Go server.
-- `internal/config`: Configuration and environment loading.
-- `internal/domain`: Core business models (Game, Board, Player), events, and message definitions.
-- `internal/repository`: Implementations for PostgreSQL and Redis interactions.
-- `internal/service`: Business logic for game sessions, matchmaking queues, bot opponents, and authentication.
-- `internal/transport`: HTTP REST endpoints and the WebSocket connection handler.
+- **Zustand** for global state (`AuthStore`, `GameStore`, `UIStore`) — never prop-drill what belongs in a store
+- **React Query** for server state (leaderboard, history, user profile)
+- Keep WebSocket interactions in hooks (`useGameSocket`) and pure UI state in Zustand
 
-### Frontend Architecture
+### Real-time Communication
 
-The React application uses a feature-based structure for better scalability:
-- `src/components/`: Reusable, generic UI components (mostly shadcn/ui).
-- `src/features/`: Domain-specific logic grouped by feature (e.g., `auth/`, `game/`).
-- `src/hooks/`: Reusable React Hooks like network state or websocket handlers.
-- `src/pages/`: Main page components mapping to routes.
-- `src/stores/`: Zustand global state slices.
-- `src/lib/`: Utilities, Axios configurations.
+All game actions flow through WebSocket. Key files:
+- **Backend:** `internal/transport/websocket/handler.go` (message routing)
+- **Frontend:** `features/game/hooks/useGameSocket.ts` (event handling)
+
+### Styling
+
+- **Tailwind CSS 4** utility classes for all styling
+- **shadcn/ui** for complex component primitives (`src/components/ui/`)
+- Custom CSS utilities for game-specific visuals are in `index.css` (`disk-shadow-red`, `win-glow`, `board-3d`)
+
+### Bot AI
+
+The minimax engine lives in `backend/internal/service/bot/`. If tuning AI behavior:
+- **Easy:** Random moves with basic win/block detection
+- **Medium:** Shallow positional evaluation
+- **Hard:** Depth-7 minimax with alpha-beta pruning and positional weight matrices
 
 ---
 
-## 💡 Best Practices & Guidelines
+## Debugging
 
-1. **State Management**:
-   The frontend relies heavily on `zustand` for global state (e.g., separating `AuthStore` and `GameStore`) rather than complex prop drilling or big context blobs. When modifying game logic, keep the network interactions in hooks (like `useGameSocket`) and pure UI state in Zustand.
+| Scenario              | How to debug                                                  |
+| --------------------- | ------------------------------------------------------------- |
+| Backend hot-reload    | Docker Compose uses Air — check `backend/.air.toml`           |
+| WebSocket events      | Go server logs are prefixed with `[WS]`                       |
+| Frontend HMR issues   | Restart Vite dev server to clear Tailwind config cache        |
+| Auth flow problems    | Check browser DevTools → Application → Cookies for JWT tokens |
+| Game state sync       | Add `console.log(useGameStore.getState())` in browser console |
 
-2. **Real-time Communication**:
-   The vast majority of the real action happens via WebSocket. Pay close attention to `backend/internal/transport/websocket/handler.go` for message routing, and `frontend/src/features/game/hooks/useGameSocket.ts` for how the frontend reacts to server events.
+---
 
-3. **Styling**:
-   Use standard **Tailwind CSS** utility classes. For complex components, refer to our `shadcn/ui` custom implementations inside `src/components/ui/`.
+## Useful Commands
 
-4. **Bot AI Adjustments**:
-   If you wish to optimize or tweak the AI, check `backend/internal/service/bot/` where the minimax algorithm and alpha-beta pruning logic live. It is deeply connected to board evaluations.
+```bash
+# Backend
+cd backend && go run ./cmd/api       # Run server
+cd backend && go test ./...          # Run tests
 
-## 🐛 Debugging
+# Frontend
+cd frontend && npm run dev           # Dev server with HMR
+cd frontend && npm run build         # Production build
+cd frontend && npm run lint          # ESLint
 
-- **Backend Hot-Reload**: When running Docker Compose, Go code is continuously watched using Air. Check `backend/.air.toml` for the exact configuration.
-- **WebSocket Logs**: The Go server prints generous logs prefixed with `[WS]` for connection lifecycles and event decoupling.
-- **Vite HMR**: Changes inside `frontend/src/` will instantly update locally. If you run into Tailwind config cache issues, restarting Vite usually clears it.
-
-Happy coding!
+# Docker
+docker compose up                    # Full dev stack
+docker compose -f docker-compose.prod.yml up   # Production
+```

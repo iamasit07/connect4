@@ -94,6 +94,9 @@ lerna-debug.log*
 .LSOverride
 ._*
 .gemini
+.agents/
+*/*.agents/
+skills-lock.json
 
 # Windows
 Thumbs.db

@@ -1,25 +1,18 @@
-# Connect 4 — Real-Time Multiplayer Game
+# Connect 4
 
-> **Created by [Asit Upadhyay](https://github.com/iamasit07)**
+> Real-time multiplayer Connect 4 with ranked matchmaking, AI bots, and WebSocket gameplay.
 
-🎮 **[Play Now](https://connect4.iamasit07.me)** | 🚀 **[Backend API](https://connect4.iamasit07.me)**
-
----
-
-## 🧩 What is this?
-
-Connect 4 is a full-stack, real-time multiplayer web game where two players take turns dropping colored discs into a 7×6 vertical grid, racing to be the first to connect four in a row — horizontally, vertically, or diagonally. Built with a **Go** backend and a **React/TypeScript** frontend, the platform supports live PvP matchmaking over WebSockets, three tiers of AI bot opponents (easy, medium, hard) powered by minimax with alpha-beta pruning, JWT + Google OAuth authentication, Elo-based rating and leaderboard tracking, game history, spectator counts, rematch requests, and a 30-second reconnection window — all deployed as a production-ready monolith on Render with Supabase PostgreSQL and Redis caching.
+**[Play Now →](https://connect4.iamasit07.me)** · **[Developer Guide](./DEVELOPER.md)** · **[Backend Deep Dive](./BACKEND_LOGIC.md)**
 
 ---
 
-## 📚 Documentation
+## About
 
-- [Developer Guide](./DEVELOPER.md) - Setup, architecture, and contribution guidelines.
-- [Backend Logic Deep Dive](./BACKEND_LOGIC.md) - Detailed breakdown of the game engine, WebSockets, and bots.
+A full-stack Connect 4 game where two players drop discs into a 7×6 grid, racing to connect four in a row. Built with a **Go** backend and **React/TypeScript** frontend, it supports live PvP over WebSockets, three tiers of AI bots (minimax with alpha-beta pruning), JWT + Google OAuth authentication, Elo-based rankings, game history, spectator mode, rematch requests, and 30-second reconnection recovery — deployed as a production monolith on Render.
 
 ---
 
-## 📸 Screenshots
+## Screenshots
 
 ![Landing Screen](assets/Landing.png)
 ![Dashboard Screen](assets/dashboard.png)
@@ -29,21 +22,21 @@ Connect 4 is a full-stack, real-time multiplayer web game where two players take
 
 ---
 
-## ✨ Features
+## Features
 
-- **🎮 Play vs Players** — Real-time PvP matchmaking with automatic opponent pairing via WebSocket
-- **🤖 Play vs Bot** — Three difficulty levels: Easy (random with basic blocking), Medium (threat evaluation), Hard (depth-7 minimax with alpha-beta pruning)
-- **🔄 Rematch System** — Request and accept rematches after a game ends, with a 10-second countdown overlay
-- **🔐 Authentication** — Sign up with email/password or Google OAuth; JWT-based stateless sessions with single-device enforcement
-- **📊 Leaderboard** — Elo-based competitive ranking system updated after every match
-- **📜 Game History** — Browse your past matches with results, move counts, and timestamps
-- **👤 Player Profiles** — View your rating, win/loss/draw stats, and account details
-- **📱 Responsive Design** — Fully playable on mobile, tablet, and desktop
-- **🌙 Dark/Light/System Theme** — Automatic theme detection with manual toggle
+- **Real-time PvP** — Automatic opponent pairing via WebSocket with Elo-ranked matchmaking
+- **AI Opponents** — Easy (random + blocking), Medium (threat evaluation), Hard (depth-7 minimax with alpha-beta pruning)
+- **Rematch System** — Request/accept rematches with 10-second countdown
+- **Authentication** — Email/password or Google OAuth with JWT-based stateless sessions
+- **Competitive Ranking** — Elo-based leaderboard updated after every match
+- **Game History** — Browse past matches with results, move counts, and timestamps
+- **Player Profiles** — View rating, win/loss/draw stats, and avatar
+- **Responsive Design** — Fully playable on mobile, tablet, and desktop
+- **Dark/Light/System Theme** — Automatic detection with manual toggle
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Backend
 
@@ -60,8 +53,8 @@ Connect 4 is a full-stack, real-time multiplayer web game where two players take
 
 | Component     | Technology                           | Purpose                                 |
 | ------------- | ------------------------------------ | --------------------------------------- |
-| Framework     | **React 18** + **TypeScript**        | Type-safe UI components                 |
-| Styling       | **Tailwind CSS** + **shadcn/ui**     | Responsive design system                |
+| Framework     | **React 19** + **TypeScript**        | Type-safe UI components                 |
+| Styling       | **Tailwind CSS 4** + **shadcn/ui**   | Responsive design system                |
 | State         | **Zustand**                          | Lightweight global state management     |
 | Animation     | **Framer Motion**                    | Smooth transitions and game animations  |
 | Data Fetching | **TanStack React Query** + **Axios** | Server state management and HTTP client |
@@ -72,12 +65,12 @@ Connect 4 is a full-stack, real-time multiplayer web game where two players take
 | Component        | Technology                      | Purpose                                            |
 | ---------------- | ------------------------------- | -------------------------------------------------- |
 | Hosting          | **Render**                      | Monolith deployment (Go serves static React build) |
-| Database         | **Supabase PostgreSQL**         | Managed Postgres with transaction-mode pooling     |
+| Database         | **Supabase PostgreSQL**         | Managed Postgres with connection pooling            |
 | Containerization | **Docker** + **Docker Compose** | Local dev and production builds                    |
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 connect4/
@@ -113,14 +106,14 @@ connect4/
 │       ├── pages/                # Dashboard, Leaderboard, History, Profile
 │       └── stores/               # UI store (theme)
 ├── docker-compose.yml            # Dev environment (Vite HMR + Air hot reload)
-├── docker-compose.prod.yml       # Production build (Nginx + compiled Go binary)
+├── docker-compose.prod.yml       # Production build (Nginx + compiled Go)
 ├── Dockerfile                    # Monolith: frontend build → Go binary → Alpine
 └── render.yaml                   # Render deployment config
 ```
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -147,13 +140,13 @@ docker compose -f docker-compose.prod.yml up
 
 ### Option 2: Manual Setup
 
-#### Backend
+**Backend:**
 
 ```bash
 cd backend
 go mod download
 
-# Create .env in backend/ (or project root)
+# Create .env in project root
 cat > .env << EOF
 DATABASE_URI=postgresql://user:password@localhost:5432/four_in_a_row
 JWT_SECRET=your-secret-key
@@ -168,7 +161,7 @@ go run ./cmd/api
 # Database tables are auto-migrated on startup
 ```
 
-#### Frontend
+**Frontend:**
 
 ```bash
 cd frontend
@@ -186,7 +179,7 @@ npm run dev
 
 ---
 
-## 🔐 Environment Variables
+## Environment Variables
 
 ### Backend
 
@@ -211,7 +204,7 @@ npm run dev
 
 ---
 
-## 🎮 How It Works
+## How It Works
 
 ### Game Flow
 
@@ -261,7 +254,7 @@ npm run dev
 
 ---
 
-## 🗄️ Database Schema
+## Database Schema
 
 ```sql
 players         — id, username, email, google_id, password_hash, rating, games_played/won/drawn
@@ -271,7 +264,6 @@ user_sessions   — session_id, user_id, device_info, ip_address, is_active (sin
 
 ---
 
-## 📞 Contact
+## Contact
 
-- **GitHub**: [@iamasit07](https://github.com/iamasit07)
-- **Email**: [asit.upadhyay793@gmail.com](mailto:asit.upadhyay793@gmail.com)
+Created by **[Asit Upadhyay](https://github.com/iamasit07)** — [asit.upadhyay793@gmail.com](mailto:asit.upadhyay793@gmail.com)

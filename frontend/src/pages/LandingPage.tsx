@@ -130,7 +130,7 @@ const LandingPage = () => {
       {/* Footer */}
       <footer className="border-t border-border/40 py-12">
         <div className="container px-4 flex flex-col md:flex-row justify-between items-center gap-6 text-sm text-muted-foreground">
-          <p>© 2025 Connect 4. Designed by Asit.</p>
+          <p>© {new Date().getFullYear()} Connect 4. Designed by Asit.</p>
           <div className="flex items-center gap-6">
             <a
               href="https://github.com/iamasit07"

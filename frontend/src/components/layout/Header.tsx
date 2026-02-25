@@ -3,7 +3,7 @@ import { Moon, Sun, LogOut, User, Menu, X, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/useUIStore';
 import { useAuthStore } from '@/features/auth/store/authStore';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +21,10 @@ interface HeaderProps {
 export const Header = ({ onLogout }: HeaderProps) => {
   const { theme, setTheme } = useUIStore();
   
-  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  const systemTheme = useMemo(() => 
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+    []
+  );
   const effectiveTheme = theme === 'system' ? systemTheme : theme;
   
   const toggleTheme = () => {

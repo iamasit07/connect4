@@ -55,8 +55,6 @@ export const SignupForm = () => {
     setGoogleLoading(true);
     try {
       await loginWithGoogle();
-    } catch (error) {
-      console.error('Google signup failed:', error);
     } finally {
       setGoogleLoading(false);
     }
