@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState, useRef } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '@/features/auth/store/authStore';
-import type { BotDifficulty, ServerMessage, Board } from '../types';
+import type { BotDifficulty, ServerMessage, Board, GameStateMessage } from '../types';
 import { WS_URL, API_BASE_URL, BOT_MOVE_DELAY } from "@/lib/config";
 import { toast } from 'sonner';
 
@@ -12,12 +12,12 @@ export const useGameSocket = (
 ) => {
   const shouldConnect = useGameStore(state => state.shouldConnect);
   const [token, setToken] = useState<string | null>(null);
-  
   const onGameStartRef = useRef<((gameId: string) => void) | undefined>(onGameStart);
   const onQueueTimeoutRef = useRef<(() => void) | undefined>(onQueueTimeout);
   const disconnectToastIdRef = useRef<string | number | undefined>(undefined);
   const pendingBotMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingGameOverRef = useRef<ServerMessage | null>(null);
+  const messageQueueRef = useRef<string[]>([]);
 
   useEffect(() => {
     onGameStartRef.current = onGameStart;
@@ -58,6 +58,19 @@ export const useGameSocket = (
         useGameStore.getState().setConnectionStatus('connected');
         if (token) {
            sendWsMessage(JSON.stringify({ type: "init", jwt: token }));
+           const store = useGameStore.getState();
+           if (store.isSpectator && store.gameId) {
+              setTimeout(() => {
+                 sendWsMessage(JSON.stringify({ type: "watch_game", gameId: store.gameId }));
+              }, 100);
+           }
+
+           setTimeout(() => {
+             if (messageQueueRef.current.length > 0) {
+               messageQueueRef.current.forEach(msg => sendWsMessage(msg));
+               messageQueueRef.current = [];
+             }
+           }, 200);
         }
       },
       onClose: () => {
@@ -138,8 +151,13 @@ export const useGameSocket = (
 
       case "move_made": {
         const isBotGame = store.gameMode === "bot";
-        const wasOpponentMove =
-          message.lastMove && message.lastMove.player !== store.myPlayer;
+        const parsedLastMove = {
+           column: message.column,
+           row: message.row,
+           player: message.player
+        };
+
+        const wasOpponentMove = parsedLastMove.player !== store.myPlayer;
 
         const currentTurn = message.nextTurn;
 
@@ -149,7 +167,7 @@ export const useGameSocket = (
             store.updateGameState({
               board: message.board as Board,
               currentTurn: currentTurn,
-              lastMove: message.lastMove,
+              lastMove: parsedLastMove,
             });
             if (pendingGameOverRef.current) {
               const queuedMsg = pendingGameOverRef.current;
@@ -161,14 +179,30 @@ export const useGameSocket = (
           store.updateGameState({
             board: message.board as Board,
             currentTurn: currentTurn,
-            lastMove: message.lastMove,
+            lastMove: parsedLastMove,
           });
         }
         break;
       }
 
       case "game_state": {
-        if (message.gameId && message.yourPlayer) {
+        if (store.isSpectator) {
+          store.updateGameState({
+            board: message.board as Board,
+            currentTurn: message.currentTurn,
+            lastMove: undefined,
+          });
+          
+          if (message.winner) {
+            store.endGame({
+                winner: message.winner,
+                reason: message.reason || "unknown",
+                winningCells: message.winningCells,
+                allowRematch: false,
+            });
+          }
+        } 
+        else if (message.gameId && message.yourPlayer) {
           store.initGame({
             gameId: message.gameId,
             board: message.board as Board,
@@ -189,13 +223,18 @@ export const useGameSocket = (
           }
           
           if (message.rematchRequester) {
-              store.setRematchStatus('received');
+              const currentUser = useAuthStore.getState().user;
+              if (message.rematchRequester === currentUser?.username) {
+                  store.setRematchStatus('sent');
+              } else {
+                  store.setRematchStatus('received');
+              }
           }
         } else {
           store.updateGameState({
             board: message.board as Board,
             currentTurn: message.currentTurn,
-            lastMove: message.lastMove,
+            lastMove: undefined,
           });
           
           if (message.winner) {
@@ -217,7 +256,6 @@ export const useGameSocket = (
 
       case "game_over":
         if (pendingBotMoveTimeoutRef.current) {
-          // Queue game_over so the bot's winning move renders first
           pendingGameOverRef.current = message;
         } else {
           processGameOver(message);
@@ -232,33 +270,48 @@ export const useGameSocket = (
         break;
 
       case "rematch_requested":
-        if (store.gameStatus === "finished") {
-          store.setRematchStatus("received");
+        if (store.isSpectator) {
+           toast.info(message.message || "A rematch was requested.");
+        } else if (store.gameStatus === "finished") {
+           const currentUser = useAuthStore.getState().user;
+           if (message.rematchRequester === currentUser?.username) {
+             store.setRematchStatus("sent");
+           } else {
+             store.setRematchStatus("received");
+           }
         }
         break;
 
       case "rematch_accepted":
-        if (store.gameStatus === "finished") {
+        if (store.isSpectator) {
+           toast.info(message.message || "Rematch accepted!");
+        } else if (store.gameStatus === "finished") {
           store.setRematchStatus("accepted");
         }
         break;
 
       case "rematch_declined":
-        if (store.gameStatus === "finished") {
+        if (store.isSpectator) {
+           toast.info(message.message || "Rematch declined.");
+        } else if (store.gameStatus === "finished") {
           store.setRematchStatus("declined");
           store.setAllowRematch(false);
         }
         break;
 
       case "rematch_timeout":
-        if (store.gameStatus === "finished") {
+        if (store.isSpectator) {
+           toast.info(message.message || "Rematch request timed out.");
+        } else if (store.gameStatus === "finished") {
           store.setRematchStatus("declined");
           store.setAllowRematch(false);
         }
         break;
 
       case "rematch_cancelled":
-        if (store.gameStatus === "finished") {
+        if (store.isSpectator) {
+           toast.info(message.message || "Rematch request cancelled.");
+        } else if (store.gameStatus === "finished") {
           store.setRematchStatus("idle");
         }
         break;
@@ -273,6 +326,14 @@ export const useGameSocket = (
           toast.dismiss(disconnectToastIdRef.current);
           disconnectToastIdRef.current = undefined;
         }
+        break;
+
+      case "force_disconnect":
+        setToken(null);
+        store.setConnectionStatus("disconnected");
+        toast.error(message.message || "Disconnected by the server");
+        store.resetGame();
+        useAuthStore.getState().clearActiveGameId();
         break;
 
       case "error":
@@ -293,10 +354,11 @@ export const useGameSocket = (
   }, [processGameOver]);
 
   const send = useCallback((message: Record<string, unknown>) => {
+     const msgStr = JSON.stringify(message);
      if (readyState === ReadyState.OPEN) {
-       sendWsMessage(JSON.stringify(message));
+       sendWsMessage(msgStr);
      } else {
-       console.warn("[WebSocket] Cannot send, socket not open", message);
+       messageQueueRef.current.push(msgStr);
      }
   }, [readyState, sendWsMessage]);
 
@@ -324,11 +386,11 @@ export const useGameSocket = (
     await connect();
 
     useGameStore.getState().setQueuing(mode, difficulty);
-    sendWsMessage(JSON.stringify({
+    send({
       type: 'find_match',
       difficulty: mode === 'bot' ? (difficulty || 'easy') : '',
-    }));
-  }, [connect, sendWsMessage]);
+    });
+  }, [connect, send]);
 
   const makeMove = useCallback((column: number) => {
     send({ type: 'make_move', column });
@@ -351,6 +413,10 @@ export const useGameSocket = (
     send({ type: 'leave_spectate', gameId });
   }, [send]);
 
+  const requestGameState = useCallback((gameId: string) => {
+    send({ type: 'get_game_state', gameId });
+  }, [send]);
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -369,6 +435,7 @@ export const useGameSocket = (
     sendMessage,
     spectateGame,
     leaveSpectate,
+    requestGameState,
     readyState
   };
 };

@@ -7,8 +7,6 @@ services:
     container_name: connect4-frontend
     ports:
       - "80:80"
-    environment:
-      - VITE_PROXY_TARGET=http://backend:8080
     networks:
       - app-network
     restart: always
