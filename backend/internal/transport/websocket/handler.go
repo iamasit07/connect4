@@ -335,17 +335,6 @@ func (h *Handler) handleConnection(conn *websocket.Conn, clientIP string) {
 
 // processMessage routes specific actions
 func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
-	// Security: Block spectators from sending game-affecting messages
-	switch msg.Type {
-	case "make_move", "request_rematch", "rematch_response", "abandon_game":
-		if h.SessionManager.IsSpectatorAnywhere(userID) {
-			h.ConnManager.SendMessage(userID, domain.ServerMessage{
-				Type:    "error",
-				Message: "Spectators cannot perform game actions",
-			})
-			return
-		}
-	}
 	switch msg.Type {
 	case "find_match":
 		difficulty := msg.Difficulty
@@ -357,7 +346,6 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 			return
 		}
 
-		// Clean up any existing game session before joining queue
 		h.SessionManager.ForceCleanupForUser(userID)
 
 		username, _ := h.ConnManager.GetUsername(userID)
@@ -442,7 +430,18 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 		}
 
 	case "get_game_state":
-		if gameSession, exists := h.SessionManager.GetSessionByUserID(userID); exists {
+		gameSession, exists := h.SessionManager.GetSessionByUserID(userID)
+		
+		if !exists && msg.GameID != "" {
+			if gs, ok := h.SessionManager.GetSessionByGameID(msg.GameID); ok {
+				if h.SessionManager.IsSpectator(userID, msg.GameID) {
+					gameSession = gs
+					exists = true
+				}
+			}
+		}
+
+		if exists {
 			h.EnsureEventLoopRunning(gameSession)
 			gameSession.HandleGetState(userID)
 		} else {
@@ -451,7 +450,6 @@ func (h *Handler) processMessage(userID int64, msg domain.ClientMessage) {
 				Message: "No active game session found",
 			})
 		}
-
 	}
 }
 
