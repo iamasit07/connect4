@@ -38,21 +38,30 @@ export const RematchPopup = ({
   }, [countdown, onDeclineRequest]);
 
   return (
-    <div className="absolute inset-0 z-50 bg-background/50 backdrop-blur-[2px] flex items-center justify-center">
-      <div className="bg-card border shadow-xl rounded-xl p-4 md:p-6 w-[90%] max-w-sm flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-200">
-        <h3 className="text-lg font-semibold text-center mb-1">
-          {opponentName} requested a rematch!
-        </h3>
+    <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="relative bg-card/95 backdrop-blur-xl border border-white/10 shadow-2xl rounded-3xl p-6 md:p-8 w-full max-w-sm flex flex-col items-center gap-5 sm:gap-6 animate-in fade-in zoom-in duration-300 overflow-hidden ring-1 ring-primary/20">
+        
+        {/* Subtle Background Glow */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[150%] h-24 bg-primary/20 blur-[50px] -z-10 rounded-full" />
+
+        <div className="text-center space-y-1">
+          <h3 className="text-2xl font-bold tracking-tight text-primary drop-shadow-[0_2px_10px_rgba(var(--primary),0.2)]">
+            Rematch?
+          </h3>
+          <p className="text-muted-foreground text-sm font-medium">
+            <span className="text-foreground">{opponentName}</span> wants to play again!
+          </p>
+        </div>
         
         <div className="flex w-full gap-3">
-          <Button onClick={onAcceptRequest} className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 h-10 md:h-12 text-sm md:text-base gap-2">
-            <Check className="w-4 h-4" />
-            <span>Accept ({countdown}s)</span>
-          </Button>
-          
-          <Button onClick={onDeclineRequest} variant="outline" className="flex-1 h-10 md:h-12 text-sm md:text-base gap-2">
+          <Button onClick={onDeclineRequest} variant="outline" className="flex-1 h-11 md:h-12 text-sm md:text-base gap-2 border-primary/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30">
              <X className="w-4 h-4" />
              Decline
+          </Button>
+          
+          <Button onClick={onAcceptRequest} className="flex-1 bg-primary text-primary-foreground shadow-lg hover:shadow-primary/25 h-11 md:h-12 text-sm md:text-base gap-2">
+            <Check className="w-4 h-4" />
+            <span>Accept ({countdown}s)</span>
           </Button>
         </div>
       </div>

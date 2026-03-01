@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion';
-import { Eye, Users, Gamepad2, RefreshCw } from 'lucide-react';
+import { Eye, Users, Gamepad2, RefreshCw, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLiveGames } from '@/hooks/queries/useGameQueries';
+import { useState } from 'react';
 
 interface LiveGamesListProps {
   onSpectate: (gameId: string) => void;
@@ -11,6 +12,19 @@ interface LiveGamesListProps {
 
 export const LiveGamesList = ({ onSpectate }: LiveGamesListProps) => {
   const { data: games = [], isLoading: loading, error, refetch } = useLiveGames();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showRefreshed, setShowRefreshed] = useState(false);
+
+  const handleRefresh = async () => {
+    if (isRefreshing || showRefreshed) return;
+    setIsRefreshing(true);
+    await refetch();
+    setIsRefreshing(false);
+    setShowRefreshed(true);
+    setTimeout(() => {
+      setShowRefreshed(false);
+    }, 5000);
+  };
 
   const getTimeSinceStart = (startedAt: string) => {
     const diff = Date.now() - new Date(startedAt).getTime();
@@ -28,11 +42,22 @@ export const LiveGamesList = ({ onSpectate }: LiveGamesListProps) => {
         </CardTitle>
         <Button
           variant="ghost"
-          size="icon"
-          onClick={() => refetch()}
-          disabled={loading}
+          size={showRefreshed ? "default" : "icon"}
+          className={`transition-all ${showRefreshed ? 'bg-green-500/10 text-green-600 hover:bg-green-500/20 hover:text-green-700' : ''}`}
+          onClick={handleRefresh}
+          disabled={isRefreshing || showRefreshed}
+          title="Refresh live games"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          {isRefreshing ? (
+            <RefreshCw className="w-4 h-4 animate-spin" />
+          ) : showRefreshed ? (
+            <span className="flex items-center gap-2 font-medium text-sm">
+              <Check className="w-4 h-4" />
+              Refreshed
+            </span>
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -81,7 +106,7 @@ export const LiveGamesList = ({ onSpectate }: LiveGamesListProps) => {
               <Button
                 size="sm"
                 variant="secondary"
-                className="gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                className="gap-1 transition-opacity"
               >
                 <Eye className="w-3.5 h-3.5" />
                 Watch

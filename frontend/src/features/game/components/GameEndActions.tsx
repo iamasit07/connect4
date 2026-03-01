@@ -20,21 +20,21 @@ export const GameEndActions = ({
   const isBot = gameMode === "bot";
 
   return (
-    <div className="w-full max-w-[min(90vw,500px)] mx-auto mt-2 sm:mt-4 flex gap-3 shrink-0">
+    <div className="w-full max-w-[min(90vw,500px)] mx-auto mt-4 px-4 sm:px-0 flex flex-col sm:flex-row gap-3 shrink-0">
       <Button
         onClick={onGoHome}
-        variant={isBot ? "outline" : "default"}
-        className="flex-1 gap-1.5 sm:gap-2 h-9 sm:h-11 text-sm sm:text-base"
+        variant="outline"
+        className="flex-1 gap-2 h-12 text-base font-semibold border-white/10 hover:bg-muted/50 shadow-sm hover:shadow-md transition-all"
       >
-        <Home className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        <Home className="w-4 h-4" />
         Dashboard
       </Button>
       {isBot ? (
         <Button
           onClick={onPlayAgain}
-          className="flex-1 gap-1.5 sm:gap-2 h-9 sm:h-11 text-sm sm:text-base"
+          className="flex-1 gap-2 h-12 text-base font-semibold bg-primary hover:bg-primary/90 shadow-md hover:shadow-xl hover:shadow-primary/20 transition-all"
         >
-          <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <RotateCcw className="w-4 h-4" />
           Play Again
         </Button>
       ) : (
