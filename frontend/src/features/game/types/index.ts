@@ -11,7 +11,8 @@ export type ClientMessage =
   | RematchResponseMessage
   | CancelSearchMessage
   | WatchGameMessage
-  | LeaveSpectateMessage;
+  | LeaveSpectateMessage
+  | GetGameStateMessage;
 
 export interface InitMessage {
   type: "init";
@@ -55,6 +56,11 @@ export interface LeaveSpectateMessage {
   gameId: string;
 }
 
+export interface GetGameStateMessage {
+  type: "get_game_state";
+  gameId?: string;
+}
+
 // ============================================
 // WebSocket Server Messages (Received from Backend)
 // ============================================
@@ -87,7 +93,13 @@ export type ServerMessage =
   | OpponentDisconnectedMessage
   | OpponentReconnectedMessage
   | NoActiveGameMessage
+  | ForceDisconnectMessage
   | ErrorMessage;
+
+export interface ForceDisconnectMessage {
+  type: "force_disconnect";
+  message: string;
+}
 
 export interface NoActiveGameMessage {
   type: "no_active_game";
@@ -104,16 +116,19 @@ export interface QueueLeftMessage {
 
 export interface RematchRequestMessage {
   type: "rematch_requested";
+  message?: string;
   rematchRequester: string;
   rematchTimeout: number;
 }
 
 export interface RematchAcceptedMessage {
   type: "rematch_accepted";
+  message?: string;
 }
 
 export interface RematchDeclinedMessage {
   type: "rematch_declined";
+  message?: string;
   allowRematch?: boolean;
 }
 
@@ -162,11 +177,6 @@ export interface GameStateMessage {
   opponent?: string;
   board: number[][];
   currentTurn: 1 | 2;
-  lastMove?: {
-    column: number;
-    row: number;
-    player: number;
-  };
   timeLeft?: number;
   disconnectTimeout?: number;
   winner?: string;
@@ -182,12 +192,7 @@ export interface MoveMadeMessage {
   row: number;
   player: number;
   board: number[][];
-  nextTurn: 1 | 2; // Backend sends nextTurn, not currentTurn
-  lastMove?: {
-    column: number;
-    row: number;
-    player: number;
-  };
+  nextTurn: 1 | 2;
 }
 
 export interface GameOverMessage {

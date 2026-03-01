@@ -18,6 +18,8 @@ export const DisconnectionTimer: React.FC = () => {
     return () => clearInterval(interval);
   }, [isOpponentDisconnected]);
 
+  const isSpectator = useGameStore(state => state.isSpectator);
+
   if (!isOpponentDisconnected) return null;
 
   return (
@@ -27,7 +29,9 @@ export const DisconnectionTimer: React.FC = () => {
           <AlertTriangle className="w-6 h-6" />
         </div>
         <div className="flex flex-col">
-          <span className="font-bold text-lg">Opponent Disconnected</span>
+          <span className="font-bold text-lg">
+            {isSpectator ? "A player disconnected" : "Opponent Disconnected"}
+          </span>
           <span className="text-sm opacity-90">
             Game ends in <span className="font-mono font-bold text-xl ml-1">{disconnectTimer}s</span>
           </span>

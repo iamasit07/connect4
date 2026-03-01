@@ -378,7 +378,6 @@ func (gs *GameSession) broadcastEvent(event domain.GameEvent) {
 	select {
 	case gs.Events <- event:
 	case <-gs.Ctx.Done():
-		// Session cancelled, stop sending
 	}
 }
 
@@ -703,10 +702,14 @@ func (gs *GameSession) HandleDisconnect(userID int64, sessionManager *SessionMan
 	
 	opponentID := gs.GetOpponentID(userID)
 	if opponentID != nil {
-		gs.sendEvent(*opponentID, domain.ServerMessage{
-			Type:              "opponent_disconnected",
-			Message:           "Opponent disconnected, waiting for reconnect...",
-			DisconnectTimeout: 60,
+		gs.broadcastEvent(domain.GameEvent{
+			Type:              domain.EventInfo,
+			Recipients:        gs.getAllParticipants(),
+			Payload: domain.ServerMessage{
+				Type:              "opponent_disconnected",
+				Message:           "Opponent disconnected, waiting for reconnect...",
+				DisconnectTimeout: 60,
+			},
 		})
 	}
 
@@ -776,8 +779,12 @@ func (gs *GameSession) HandleReconnect(userID int64) error {
 			
 			opponentID := gs.GetOpponentID(userID)
 			if opponentID != nil && !gs.Game.IsFinished() {
-				gs.sendEvent(*opponentID, domain.ServerMessage{
-					Type: "opponent_reconnected",
+				gs.broadcastEvent(domain.GameEvent{
+					Type:       domain.EventInfo,
+					Recipients: gs.getAllParticipants(),
+					Payload: domain.ServerMessage{
+						Type: "opponent_reconnected",
+					},
 				})
 			}
 		}
@@ -866,10 +873,12 @@ func (gs *GameSession) HandleRematchRequest(userID int64, sessionManager *Sessio
 
 	gs.broadcastEvent(domain.GameEvent{
 		Type: domain.EventInfo,
-		Recipients: []int64{*opponentID},
+		Recipients: gs.getAllParticipants(),
 		Payload: domain.ServerMessage{
 			Type: "rematch_requested",
 			Message: fmt.Sprintf("%s wants a rematch!", requesterName),
+			RematchRequester: requesterName,
+			RematchTimeout: 10,
 		},
 	})
 	
@@ -890,7 +899,6 @@ func (gs *GameSession) HandleRematchResponse(userID int64, accept bool, sessionM
 	}
 
 	if !accept {
-		requesterID := *gs.RematchRequester
 		gs.RematchRequester = nil
 		if gs.RematchRequestTimer != nil {
 			gs.RematchRequestTimer.Stop()
@@ -899,7 +907,7 @@ func (gs *GameSession) HandleRematchResponse(userID int64, accept bool, sessionM
 		
 		gs.broadcastEvent(domain.GameEvent{
 			Type: domain.EventInfo,
-			Recipients: []int64{requesterID},
+			Recipients: gs.getAllParticipants(),
 			Payload: domain.ServerMessage{
 				Type: "rematch_declined",
 				Message: "Opponent declined rematch",
@@ -919,7 +927,7 @@ func (gs *GameSession) HandleRematchResponse(userID int64, accept bool, sessionM
 	// Send rematch_accepted via old session (still valid at this point)
 	gs.broadcastEvent(domain.GameEvent{
 		Type:       domain.EventInfo,
-		Recipients: []int64{p1ID, *p2ID},
+		Recipients: gs.getAllParticipants(),
 		Payload: domain.ServerMessage{
 			Type:    "rematch_accepted",
 			Message: "Rematch accepted! Starting new game...",
@@ -1070,11 +1078,42 @@ func (gs *GameSession) startRematchTimer() {
 		defer gs.mu.Unlock()
 		if gs.RematchRequester == nil { return }
 		gs.RematchRequester = nil
-		// Notify timeout
+		recipients := []int64{gs.Player1ID}
+		if gs.Player2ID != nil {
+			recipients = append(recipients, *gs.Player2ID)
+		}
+		
+		allowRematch := false
+		gs.broadcastEvent(domain.GameEvent{
+			Type:       domain.EventInfo,
+			Recipients: recipients,
+			Payload: domain.ServerMessage{
+				Type:         "rematch_timeout",
+				Message:      "Rematch request timed out",
+				AllowRematch: &allowRematch,
+			},
+		})
 	})
 }
 func (gs *GameSession) CancelRematchRequest() {
-	gs.RematchRequester = nil
+	if gs.RematchRequester != nil {
+		gs.RematchRequester = nil
+		
+		recipients := []int64{gs.Player1ID}
+		if gs.Player2ID != nil {
+			recipients = append(recipients, *gs.Player2ID)
+		}
+
+		gs.broadcastEvent(domain.GameEvent{
+			Type:       domain.EventInfo,
+			Recipients: recipients,
+			Payload: domain.ServerMessage{
+				Type:    "rematch_cancelled",
+				Message: "Rematch request was cancelled",
+			},
+		})
+	}
+
 	if gs.RematchRequestTimer != nil {
 		gs.RematchRequestTimer.Stop()
 		gs.RematchRequestTimer = nil

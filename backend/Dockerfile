@@ -18,6 +18,9 @@ FROM alpine:latest
 
 WORKDIR /app
 
+# Install ca-certificates for external API calls (e.g. Google OAuth)
+RUN apk --no-cache add ca-certificates
+
 # Copy the pre-built binary file from the previous stage
 COPY --from=builder /app/main .
 COPY --from=builder /app/script ./script
