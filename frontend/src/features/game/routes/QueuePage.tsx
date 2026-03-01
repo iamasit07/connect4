@@ -1,23 +1,38 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { QueueScreen } from '../components/QueueScreen';
 import { useGameSocket } from '../hooks/useGameSocket';
 import { useGameStore } from '../store/gameStore';
 import type { BotDifficulty } from '../types';
+import { toast } from 'sonner';
 
 const QueuePage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const gameFound = useRef(false);
+  const [isTimedOut, setIsTimedOut] = useState(false);
 
   const onGameStart = useCallback((gameId: string) => {
     gameFound.current = true;
     navigate(`/game/${gameId}`);
   }, [navigate]);
 
-  const { findMatch, disconnect, sendMessage } = useGameSocket(onGameStart);
+  const onQueueTimeout = useCallback(() => {
+    setIsTimedOut(true);
+  }, []);
+
+  const { findMatch, disconnect, sendMessage } = useGameSocket(onGameStart, onQueueTimeout);
   const { resetGame } = useGameStore();
   const previousRoute = location.state?.from || '/play';
+
+  useEffect(() => {
+    if (isTimedOut) {
+      toast.error("Matchmaking timed out. Please try again.");
+      disconnect();
+      resetGame();
+      navigate(previousRoute);
+    }
+  }, [isTimedOut, disconnect, resetGame, navigate, previousRoute]);
 
   useEffect(() => {
     findMatch('pvp');
