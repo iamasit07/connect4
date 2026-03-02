@@ -9,12 +9,9 @@ interface DiskProps {
 }
 
 export const Disk = ({ player, isWinning = false, isNew = false, row = 0 }: DiskProps) => {
-  // Ensure player is treated as a number to handle potential string values
   const playerNum = Number(player);
-  const isRed = playerNum === 1;
-  
-  // Calculate animation distance based on row position
-  const dropDistance = -((row + 1) * 100);
+  const isRed = playerNum === 1
+  const dropDistance = -((row + 1) * 40);
   
   return (
     <motion.div
@@ -48,8 +45,8 @@ export const Disk = ({ player, isWinning = false, isNew = false, row = 0 }: Disk
         className={cn(
           'absolute inset-[8%] rounded-full',
           isRed 
-            ? 'bg-gradient-to-b from-red-400 to-red-600' 
-            : 'bg-gradient-to-b from-yellow-300 to-yellow-500'
+            ? 'bg-linear-to-b from-red-400 to-red-600' 
+            : 'bg-linear-to-b from-yellow-300 to-yellow-500'
         )}
         style={{
           boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.15)',
@@ -61,8 +58,8 @@ export const Disk = ({ player, isWinning = false, isNew = false, row = 0 }: Disk
         className={cn(
           'absolute inset-[25%] rounded-full',
           isRed 
-            ? 'bg-gradient-to-b from-red-700 to-red-500' 
-            : 'bg-gradient-to-b from-yellow-600 to-yellow-400'
+            ? 'bg-linear-to-b from-red-700 to-red-500' 
+            : 'bg-linear-to-b from-yellow-600 to-yellow-400'
         )}
         style={{
           boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.3), inset 0 -2px 4px rgba(255,255,255,0.15)',
@@ -74,16 +71,15 @@ export const Disk = ({ player, isWinning = false, isNew = false, row = 0 }: Disk
         className={cn(
           'absolute inset-[40%] rounded-full',
           isRed 
-            ? 'bg-gradient-to-br from-red-400 to-red-600' 
-            : 'bg-gradient-to-br from-yellow-300 to-yellow-500'
+            ? 'bg-linear-to-br from-red-400 to-red-600' 
+            : 'bg-linear-to-br from-yellow-300 to-yellow-500'
         )}
         style={{
           boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.3)',
         }}
       />
       
-      {/* Top edge highlight */}
-      <div className="absolute top-0 left-[10%] right-[10%] h-[3px] bg-gradient-to-r from-transparent via-white/30 to-transparent rounded-full" />
+      <div className="absolute top-0 left-[10%] right-[10%] h-[3px] bg-linear-to-r from-transparent via-white/30 to-transparent rounded-full" />
     </motion.div>
   );
 };
