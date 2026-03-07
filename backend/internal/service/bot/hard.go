@@ -15,7 +15,7 @@ const (
 	POSITION_WEIGHT      = 10
 	TWO_IN_ROW_WEIGHT    = 50
 	THREE_IN_ROW_WEIGHT  = 500
-	hardTopTierTolerance = 0.12
+	hardTopTierTolerance = 0.04
 )
 
 func CalculateBestMoveMinimax(board [][]domain.PlayerID, botPlayer domain.PlayerID) int {
