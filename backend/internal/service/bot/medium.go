@@ -7,7 +7,7 @@ import (
 	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 
-const scoreJitterPercent = 12
+const scoreJitterPercent = 25
 
 func calculateMediumMove(board [][]domain.PlayerID, botPlayer domain.PlayerID) int {
 	validColumns := domain.GetValidMoves(board)

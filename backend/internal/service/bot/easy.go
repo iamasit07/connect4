@@ -6,7 +6,7 @@ import (
 	"github.com/iamasit07/connect4/backend/internal/domain"
 )
 
-const easyMistakeChance = 20
+const easyMistakeChance = 40
 
 func CalculateBestMoveEasy(board [][]domain.PlayerID, botPlayer domain.PlayerID) int {
 	validColumns := domain.GetValidMoves(board)
