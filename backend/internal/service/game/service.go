@@ -449,6 +449,7 @@ func (gs *GameSession) HandleMove(userID int64, column int) error {
 				Winner:       winnerUsername,
 				Reason:       gs.Reason,
 				Board:        gs.Game.Board,
+				WinningCells: convertWinningCells(gs.Game.WinningCells),
 				AllowRematch: &allowRematch,
 			},
 		})
@@ -599,6 +600,7 @@ func (gs *GameSession) HandleBotMove() error {
 				Winner:       gs.Player2Username,
 				Reason:       gs.Reason,
 				Board:        gs.Game.Board,
+				WinningCells: convertWinningCells(gs.Game.WinningCells),
 				AllowRematch: &allowRematch,
 			},
 		})
@@ -1184,6 +1186,25 @@ func (sm *SessionManager) CreateRematchSession(p1ID int64, p1User string, p2ID *
 	// Logic to start new game
 	session := sm.CreateSession(p1ID, p1User, p2ID, p2User, botDiff)
 	return session
+}
+
+// convertWinningCells converts flat indices (row*7+col) to {Row, Col} structs for the frontend
+func convertWinningCells(cells []int) []struct {
+	Row int `json:"row"`
+	Col int `json:"col"`
+} {
+	if len(cells) == 0 {
+		return nil
+	}
+	result := make([]struct {
+		Row int `json:"row"`
+		Col int `json:"col"`
+	}, len(cells))
+	for i, idx := range cells {
+		result[i].Row = idx / domain.Columns
+		result[i].Col = idx % domain.Columns
+	}
+	return result
 }
 
 // Convert board to ints (helper)
