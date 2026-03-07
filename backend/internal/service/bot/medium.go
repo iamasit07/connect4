@@ -2,9 +2,12 @@ package bot
 
 import (
 	"math"
+	"math/rand"
 
 	"github.com/iamasit07/connect4/backend/internal/domain"
 )
+
+const scoreJitterPercent = 12
 
 func calculateMediumMove(board [][]domain.PlayerID, botPlayer domain.PlayerID) int {
 	validColumns := domain.GetValidMoves(board)
@@ -108,6 +111,22 @@ func calculateMediumMove(board [][]domain.PlayerID, botPlayer domain.PlayerID) i
 		case 2:
 			scores[col] += SCORE_EDGE
 		}
+	}
+
+	// === PHASE 7: Add jitter so identical positions don't always play identically ===
+	for _, col := range validColumns {
+		base := scores[col]
+		if base < 0 {
+			base = -base
+		}
+		if base == 0 {
+			base = SCORE_NEAR_CENTER // minimum reference so zero-score cols vary too
+		}
+		maxJitter := base * scoreJitterPercent / 100
+		if maxJitter < 1 {
+			maxJitter = 1
+		}
+		scores[col] += rand.Intn(maxJitter*2+1) - maxJitter
 	}
 
 	return findBestColumn(scores)
